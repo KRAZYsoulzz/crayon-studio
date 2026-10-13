@@ -16,7 +16,11 @@ class FFmpegCompositor:
 
     def __init__(self, ffmpeg_path: Optional[str] = None, fps: int = 30):
         self.fps = fps
-        self.ffmpeg_path = ffmpeg_path or self.find_ffmpeg_executable()
+        self.ffmpeg_path = (
+            ffmpeg_path
+            if ffmpeg_path and (os.path.exists(ffmpeg_path) or shutil.which(ffmpeg_path))
+            else self.find_ffmpeg_executable()
+        )
 
     def validate_ffmpeg_binary(self) -> bool:
         """Check whether the configured FFmpeg binary is accessible."""

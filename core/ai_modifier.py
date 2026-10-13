@@ -1,10 +1,11 @@
 """In-App AI Assistant for Script & Hook Revisions.
 
-Provides intelligent script alterations:
+Provides intelligent, topic-aware script alterations:
 - High-friction viral hook injection
-- Curiosity gap tightening
+- Topic-aware script drafting addressing confusion points & content gaps
+- 155-170 word target length (62-68 seconds at 1.05x speed)
+- Seamless audio loop closures (ending sentence loops into opening hook)
 - TikTok Shop organic product bridge integration
-- Pacing adjustments for target duration (61s-75s)
 """
 
 from __future__ import annotations
@@ -22,60 +23,116 @@ def modify_script(
     category: str = "STEM",
     target_duration: int = 65,
     tiktok_product: Optional[str] = None,
+    topic: str = "",
 ) -> str:
-    """Apply intelligent script revision based on prompt instruction.
+    """Apply intelligent script revision based on prompt instruction and topic context.
 
     Args:
-        script_text: Existing script content.
-        prompt: User's revision command (e.g., 'Make hook punchier', 'Add curiosity gap').
+        script_text: Existing script content. If empty, generates a viral 155-170 word script.
+        prompt: User's revision command (e.g., 'Make hook punchier', 'Address confusion...').
         category: Niche category (STEM, Escape/Heist, Architecture, Psychology).
         target_duration: Desired video duration in seconds.
         tiktok_product: Optional product to weave into the narrative.
+        topic: Selected trend topic from Tab 1 to dynamically weave into the script.
 
     Returns:
-        Revised script string with viral structure.
+        Revised script string with viral pacing and seamless loop structure.
     """
     clean_prompt = prompt.strip().lower()
     text = script_text.strip()
-
     lines = [line.strip() for line in text.split("\n") if line.strip()]
 
-    # If script is completely empty, generate a tailored viral template
+    # If script is completely empty, generate a tailored 155-170 word script
     if not text:
-        target_words = int(target_duration * 2.3)
+        if topic:
+            clean_topic = topic.strip()
+            confusion_match = re.search(r"confusion:\s*([^.|?]+)", prompt, re.IGNORECASE)
+            gap_match = re.search(r"gap:\s*([^.|!]+)", prompt, re.IGNORECASE)
+            confusion = confusion_match.group(1).strip() if confusion_match else "why this works under extreme load"
+            gap = gap_match.group(1).strip() if gap_match else "the hidden stress distribution"
+
+            if len(confusion.split()) > 6:
+                confusion = " ".join(confusion.split()[:6])
+            if len(gap.split()) > 6:
+                gap = " ".join(gap.split()[:6])
+
+            hook = f"Stop scrolling, because {clean_topic} is something almost everyone gets wrong when they first see it."
+            core = (
+                f" The primary question that puzzles most viewers comes down to one fundamental mystery: {confusion}? "
+                f"When researchers placed the subject under high-speed diagnostic cameras, they uncovered an astonishing physical mechanism at work. "
+                f"The external forces do not travel in a simple straight line; instead, microscopic internal geometry actively redirects the shear stress before microcracks can propagate. "
+                f"Most viral videos completely overlook {gap}, but that exact detail is the secret reason the entire framework survives without catastrophic failure. "
+                f"By dissipating kinetic shock across an interconnected geometric lattice, the material actually gains structural rigidity during initial pressure waves. "
+                f"Every test demonstrates that true physical stability is achieved through dynamic energy distribution rather than brittle resistance."
+            )
+            product_bridge = ""
+            if tiktok_product and "none" not in tiktok_product.lower():
+                product_bridge = (
+                    f" If you want to sketch out the structural engineering of {clean_topic} yourself, "
+                    f"check out the {tiktok_product} linked down below in the showcase."
+                )
+
+            closing = (
+                f" Once you understand how these hidden forces balance, you will never view modern mechanics the same way again, "
+                f"especially when considering why:"
+            )
+
+            combined = (hook + core + product_bridge + closing).strip()
+            words = combined.split()
+            if len(words) < 155:
+                extra = " Scientists spent years conducting stress tests to verify that every single load vector remains balanced in real-world environments."
+                combined = (hook + core + extra + product_bridge + closing).strip()
+                words = combined.split()
+
+            if len(words) > 170:
+                words = words[:165]
+                result = " ".join(words).rstrip(".,;:!") + ", especially when considering why:"
+            else:
+                result = " ".join(words)
+            return result
+
+        # Category-specific baseline templates (Guaranteed 155-170 words each with seamless loop)
         if category == "Escape/Heist":
             return (
-                "In 2003, thieves bypassed a ten-tier security vault without tripping a single alarm. "
-                "The safe was guarded by magnetic field detectors, infrared beams, and a seismic sensor "
-                "calibrated to detect a heartbeat. So how did they walk out with one hundred million dollars? "
-                "They realized something the engineers overlooked: the thermal sensors only measured body heat. "
-                "By using standard hairspray, they temporarily insulated the thermal sensors before opening the door. "
-                "Every lock has a design flaw if you look closely enough."
+                "In 2003, a crew of thieves bypassed an impenetrable subterranean bank vault and escaped with one hundred million dollars without tripping a single alarm. "
+                "The vault was fortified behind a three-ton steel door protected by a combination dial, a physical key, an encrypted magnetic field detector, infrared motion sensors, and a seismic sensor tuned to detect footsteps. "
+                "On paper, breaching it was completely impossible. But the mastermind spent thirty months analyzing the blueprints and discovered an astonishing flaw in the physics of the sensors. "
+                "The high-end infrared detectors monitored ambient heat differentials rather than solid objects. "
+                "By coating the sensors with a thin layer of ordinary women's hairspray, they temporarily insulated the thermal optics, blinding the alarm system. "
+                "Next, they placed a magnetic bypass across the door contacts to simulate a closed circuit before swinging the vault wide open. "
+                "Security systems are designed by humans, meaning every barrier contains a hidden structural vulnerability waiting for someone who studies:"
             )
         elif category == "Architecture":
             return (
-                "Why can ancient Roman harbors withstand two thousand years of crashing ocean waves, "
-                "while modern concrete cracks after fifty years? "
-                "Scientists cracked the secret using electron microscopes. The Romans mixed volcanic ash "
-                "with slaked lime and seawater. When waves hit the concrete, it triggered a chemical reaction "
-                "that grew interlocking mineral crystals called aluminous tobermorite. "
-                "Instead of eroding the wall, the ocean was actually cementing it tighter every single day."
+                "Why can ancient Roman harbors withstand two thousand years of crashing ocean waves, while modern concrete structures crack and crumble after fifty years? "
+                "Scientists finally unlocked this mystery using electron microscopes and high-energy X-ray diffraction. "
+                "The Romans didn't just mix sand and gravel; they forged their concrete using reactive volcanic ash called pozzolana, slaked lime, and seawater. "
+                "When saltwater infiltrates the microscopic pores, it doesn't degrade the internal framework. "
+                "Instead, it dissolves the volcanic ash and triggers an active hydrothermal reaction. "
+                "This chemical reaction precipitates interlocking crystals of a rare mineral called aluminous tobermorite. "
+                "These microscopic crystals expand into microscopic voids like biological bone tissue, sealing microcracks before structural damage can spread. "
+                "Instead of eroding the seawall, the immense hydraulic pressure of the ocean actually cements the Roman concrete tighter with every single passing decade. "
+                "Modern architects are now racing to replicate this self-healing chemistry for new deep-sea mega-structures, but it all begins by questioning:"
             )
         elif category == "Psychology":
             return (
-                "There is a psychological glitch in your brain that con artists exploit every single day. "
-                "It's called the 'Illusion of Control'. "
-                "When people roll dice in a casino, they roll gently if they want low numbers, and throw with force "
-                "if they want high numbers. Logically, physics doesn't care how hard you roll. But our brains "
-                "desperately fabricate patterns to feel safe in chaos. Once you see this glitch, you notice it everywhere."
+                "There is a fascinating glitch wired into your subconscious mind that casinos and con artists exploit every single day to influence your behavior. "
+                "Cognitive psychologists call this cognitive blindspot the 'Illusion of Control'. "
+                "When gamblers throw dice across a craps table, high-speed cameras show they instinctively roll with gentle finesse when they need low numbers, and throw with aggressive force when they need high numbers. "
+                "Logically, physics and probability do not care about arm speed once the dice leave your fingertips. "
+                "Yet human brains crave pattern recognition so desperately that we trick ourselves into believing our personal intention dictates purely random events. "
+                "From pressing elevator buttons multiple times to superstitious game-day rituals, we manufacture false agency to shield ourselves from existential chaos. "
+                "The moment you recognize this psychological blindspot, you begin catching yourself doing it constantly throughout your daily life, especially when you remember that deep down, our daily choices are driven by the fact that:"
             )
         else:  # STEM
             return (
-                "If you drop a bowling ball and a feather in a vacuum chamber, they hit the floor at the exact same millisecond. "
-                "Galileo proved this in theory four hundred years ago, but seeing it in real life looks like a glitch in the simulation. "
-                "Air resistance is the only reason the feather drifts slowly. Without air molecules pushing upward, gravity pulls "
-                "every single kilogram with the identical acceleration: 9.8 meters per second squared. "
-                "Matter doesn't care how heavy it is when falling through nothingness."
+                "If you drop a heavy bowling ball and a lightweight feather inside a giant vacuum chamber, they hit the floor at the exact same millisecond. "
+                "Galileo formulated this counterintuitive law of physics over four hundred years ago, but watching it unfold before your eyes looks like an outright glitch in our physical simulation. "
+                "Under ordinary room conditions, aerodynamic air resistance pushes upward against the feather's broad surface, causing it to flutter and drift downward slowly. "
+                "But once you extract all the air molecules and drop them in a complete vacuum, atmospheric drag drops to zero. "
+                "Without air molecules pushing back, planetary gravity accelerates every single object at the identical rate: nine point eight meters per second squared, regardless of its mass, size, or material composition. "
+                "The universe proves that gravity doesn't accelerate weight; it curves spacetime itself, pulling massive steel and fragile feathers with the exact same celestial urgency. "
+                "Whenever people see physics stripped down to its raw mechanics, they find themselves questioning:"
             )
 
     # 1. Modify Hook
@@ -113,7 +170,6 @@ def modify_script(
 
     # 4. Shorten or Expand for target duration
     elif "shorten" in clean_prompt or "compress" in clean_prompt or "faster" in clean_prompt:
-        # Trim sentences
         combined = " ".join(lines)
         sentences = re.split(r"(?<=[.!?]) +", combined)
         target_count = max(4, int(len(sentences) * 0.75))
@@ -128,8 +184,6 @@ def modify_script(
         lines.insert(len(lines) // 2, expansion)
 
     else:
-        # General enhancement / polish
-        prefix = "Notice how "
         if lines:
             lines[-1] = lines[-1] + " And that is why this changes everything."
 

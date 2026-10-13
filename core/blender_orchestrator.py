@@ -17,7 +17,11 @@ class BlenderOrchestrator:
 
     def __init__(self, blender_path: Optional[str] = None, fps: int = 30):
         self.fps = fps
-        self.blender_path = blender_path or self.find_blender_executable()
+        self.blender_path = (
+            blender_path
+            if blender_path and (os.path.exists(blender_path) or shutil.which(blender_path))
+            else self.find_blender_executable()
+        )
 
     def validate_blender_binary(self) -> bool:
         """Check whether the configured Blender binary exists and can be executed."""
@@ -154,7 +158,8 @@ class BlenderOrchestrator:
 
     def generate_svg_puppets(self, svg_dir: str, category: str = "STEM") -> Dict[str, List[Dict[str, Any]]]:
         """
-        Generates multi-part articulated SVG vector components on disk for each Act.
+        Generates multi-part articulated SVG vector components on disk for each Act,
+        tailored specifically to the given video category (STEM, Architecture, Escape/Heist, Psychology).
         Each part specifies its SVG filepath, color palette key, joint pivot offset,
         and kinematic motion profile so Blender rigs and animates real 2D movement.
         """
@@ -174,125 +179,415 @@ class BlenderOrchestrator:
                 f.write(svg_content)
             return full_path
 
-        # ACT 1: Visual Incomplete Hook (Upper Arm + Hinged Forearm + Swelling Bicep / Subject)
-        arm_base = write_svg(
-            "act1_upper_arm.svg",
-            '<path d="M -320,80 C -220,110 -80,105 20,75 L 20,-45 C -90,-15 -220,-20 -320,-40 Z" fill="none" stroke="black" stroke-width="14"/>'
-            '<path d="M -230,-35 C -160,-145 -60,-145 5,-40" fill="none" stroke="black" stroke-width="18"/>'
-        )
-        forearm_hinged = write_svg(
-            "act1_forearm.svg",
-            '<path d="M 0,0 L 240,-180 L 285,-145 L 45,45 Z" fill="none" stroke="black" stroke-width="14"/>'
-            '<circle cx="275" cy="-175" r="48" fill="none" stroke="black" stroke-width="14"/>'
-        )
-        hook_callout = write_svg(
-            "act1_callout_arrows.svg",
-            '<path d="M -115,-175 L -115,-280 M -150,-215 L -115,-170 L -80,-215" fill="none" stroke="black" stroke-width="12"/>'
-            '<path d="M -240,-330 L 20,-330 M -210,-370 L -30,-370" fill="none" stroke="black" stroke-width="10"/>'
-        )
-        manifest["Act1_Hook_Incomplete"] = [
-            {"file": arm_base, "color": "blue", "pivot": (0.0, 0.0, 0.0), "motion": "pulse_bicep"},
-            {"file": forearm_hinged, "color": "blue", "pivot": (0.15, 0.05, 0.0), "motion": "hinge_flex"},
-            {"file": hook_callout, "color": "red", "pivot": (0.0, 0.3, 0.0), "motion": "bounce_arrow"},
-        ]
+        cat_upper = category.upper()
 
-        # ACT 2: Core Mechanism (Actin Top/Bottom Ropes & Myosin Central Thick Puller)
-        actin_top = write_svg(
-            "act2_actin_top.svg",
-            '<path d="M -420,220 C -280,245 -140,195 0,220 C 140,245 280,195 420,220" fill="none" stroke="black" stroke-width="16"/>'
-            '<circle cx="-300" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-            '<circle cx="-150" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-            '<circle cx="0" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-            '<circle cx="150" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-            '<circle cx="300" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-        )
-        actin_bottom = write_svg(
-            "act2_actin_bottom.svg",
-            '<path d="M -420,-220 C -280,-195 -140,-245 0,-220 C 140,-195 280,-245 420,-220" fill="none" stroke="black" stroke-width="16"/>'
-            '<circle cx="-300" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-            '<circle cx="-150" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-            '<circle cx="0" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-            '<circle cx="150" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-            '<circle cx="300" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
-        )
-        myosin_core = write_svg(
-            "act2_myosin_core.svg",
-            '<rect x="-360" y="-45" width="720" height="90" rx="20" fill="none" stroke="black" stroke-width="18"/>'
-            '<path d="M -250,45 L -210,125 M -50,45 L -10,125 M 150,45 L 190,125" fill="none" stroke="black" stroke-width="14"/>'
-            '<path d="M -250,-45 L -210,-125 M -50,-45 L -10,-125 M 150,-45 L 190,-125" fill="none" stroke="black" stroke-width="14"/>'
-        )
-        manifest["Act2_Core_Mechanism"] = [
-            {"file": actin_top, "color": "blue", "pivot": (0.0, 0.22, 0.0), "motion": "slide_in_left"},
-            {"file": actin_bottom, "color": "blue", "pivot": (0.0, -0.22, 0.0), "motion": "slide_in_right"},
-            {"file": myosin_core, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "breathe_scale"},
-        ]
+        if "ARCH" in cat_upper:
+            # ARCHITECTURE: Roman Concrete Self-Healing Hydrothermal Lattice
+            seawall_base = write_svg(
+                "arch_act1_seawall.svg",
+                '<rect x="-420" y="-120" width="840" height="240" rx="8" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -420,-40 L 420,-40 M -420,40 L 420,40 M -200,-120 L -200,-40 M 0,-40 L 0,40 M 200,-40 L 200,40 M -100,40 L -100,120 M 100,40 L 100,120" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            ocean_wave = write_svg(
+                "arch_act1_wave.svg",
+                '<path d="M -450,-180 C -350,-80 -250,-240 -150,-140 C -50,-40 50,-200 150,-100 C 250,0 350,-160 450,-60 L 450,-300 L -450,-300 Z" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -220,-110 C -180,-70 -140,-130 -100,-90 M 80,-70 C 120,-30 160,-90 200,-50" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            stress_callout = write_svg(
+                "arch_act1_stress.svg",
+                '<path d="M -300,-220 L -300,-130 M -325,-160 L -300,-125 L -275,-160" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M 0,-240 L 0,-130 M -25,-165 L 0,-125 L 25,-165" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M 300,-220 L 300,-130 M 275,-160 L 300,-125 L 325,-160" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act1_Hook_Incomplete"] = [
+                {"file": seawall_base, "color": "blue", "pivot": (0.0, 0.0, 0.0), "motion": "breathe_scale"},
+                {"file": ocean_wave, "color": "blue", "pivot": (-0.2, -0.15, 0.0), "motion": "slide_in_left"},
+                {"file": stress_callout, "color": "red", "pivot": (0.0, 0.28, 0.0), "motion": "bounce_arrow"},
+            ]
 
-        # ACT 3: Obstacle / Caution Tape Blocking Connection
-        caution_tape = write_svg(
-            "act3_caution_tape.svg",
-            '<path d="M -430,175 L 430,175 M -430,135 L 430,135" fill="none" stroke="black" stroke-width="14"/>'
-            '<path d="M -380,175 L -330,135 M -260,175 L -210,135 M -140,175 L -90,135 M -20,175 L 30,135 M 100,175 L 150,135 M 220,175 L 270,135" fill="none" stroke="black" stroke-width="12"/>'
-        )
-        blocked_heads = write_svg(
-            "act3_blocked_heads.svg",
-            '<path d="M -220,0 L -180,115 C -160,135 -130,115 -145,85 L -190,0" fill="none" stroke="black" stroke-width="16"/>'
-            '<path d="M 40,0 L 80,115 C 100,135 130,115 115,85 L 70,0" fill="none" stroke="black" stroke-width="16"/>'
-            '<path d="M -60,195 L 20,275 M 20,195 L -60,275" fill="none" stroke="black" stroke-width="18"/>'
-        )
-        manifest["Act3_Obstacle_Friction"] = [
-            {"file": caution_tape, "color": "yellow", "pivot": (0.0, 0.15, 0.0), "motion": "wave_shift"},
-            {"file": blocked_heads, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "recoil_bounce"},
-        ]
+            pozzolana_matrix = write_svg(
+                "arch_act2_pozzolana.svg",
+                '<circle cx="-250" cy="80" r="45" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="-80" cy="-60" r="60" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="160" cy="70" r="50" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="300" cy="-70" r="40" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -380,0 L 380,0 M 0,-250 L 0,250" fill="none" stroke="black" stroke-width="10"/>',
+            )
+            water_channels = write_svg(
+                "arch_act2_channels.svg",
+                '<path d="M -320,-280 C -300,-180 -220,-120 -200,-20 C -180,80 -120,160 -100,280" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M 120,-280 C 140,-160 200,-100 220,0 C 240,100 280,180 300,280" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act2_Core_Mechanism"] = [
+                {"file": pozzolana_matrix, "color": "yellow", "pivot": (0.0, 0.0, 0.0), "motion": "breathe_scale"},
+                {"file": water_channels, "color": "blue", "pivot": (0.0, 0.0, 0.0), "motion": "drop_cascade"},
+            ]
 
-        # ACT 4: Trigger Action (Calcium Floods & Peels Caution Tape)
-        calcium_swarm = write_svg(
-            "act4_calcium_ions.svg",
-            '<circle cx="-280" cy="340" r="36" fill="none" stroke="black" stroke-width="14"/>'
-            '<circle cx="-90" cy="390" r="36" fill="none" stroke="black" stroke-width="14"/>'
-            '<circle cx="110" cy="350" r="36" fill="none" stroke="black" stroke-width="14"/>'
-            '<circle cx="290" cy="380" r="36" fill="none" stroke="black" stroke-width="14"/>'
-            '<path d="M -280,290 L -280,180 M -90,340 L -90,210 M 110,300 L 110,180 M 290,330 L 290,200" fill="none" stroke="black" stroke-width="12"/>'
-        )
-        peeling_tape = write_svg(
-            "act4_peeled_tape.svg",
-            '<path d="M -420,150 C -180,160 80,260 390,410" fill="none" stroke="black" stroke-width="14"/>'
-            '<path d="M -390,120 C -150,130 110,230 410,380" fill="none" stroke="black" stroke-width="14"/>'
-        )
-        manifest["Act4_Trigger_Action"] = [
-            {"file": calcium_swarm, "color": "green", "pivot": (0.0, 0.35, 0.0), "motion": "drop_cascade"},
-            {"file": peeling_tape, "color": "yellow", "pivot": (-0.4, 0.15, 0.0), "motion": "peel_away"},
-        ]
+            microcracks = write_svg(
+                "arch_act3_microcracks.svg",
+                '<path d="M -280,0 L -180,60 L -100,-20 L 20,40 L 140,-50 L 260,30" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -180,60 L -140,140 M 20,40 L 60,120 M 140,-50 L 190,-130" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            erosion_barrier = write_svg(
+                "arch_act3_erosion.svg",
+                '<path d="M -400,-180 C -250,-100 -100,-240 50,-160 C 200,-80 350,-220 450,-140" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -400,-120 C -250,-40 -100,-180 50,-100 C 200,-20 350,-160 450,-80" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            manifest["Act3_Obstacle_Friction"] = [
+                {"file": microcracks, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "wave_shift"},
+                {"file": erosion_barrier, "color": "yellow", "pivot": (0.0, -0.15, 0.0), "motion": "recoil_bounce"},
+            ]
 
-        # ACT 5: Ratchet Contraction & Resolution Bridge
-        ratchet_left = write_svg(
-            "act5_ratchet_left.svg",
-            '<path d="M -440,210 L -60,210 M -440,-210 L -60,-210 M -440,-250 L -440,250" fill="none" stroke="black" stroke-width="18"/>'
-            '<circle cx="-260" cy="210" r="24" fill="none" stroke="black" stroke-width="14"/>'
-            '<circle cx="-120" cy="210" r="24" fill="none" stroke="black" stroke-width="14"/>'
-        )
-        ratchet_right = write_svg(
-            "act5_ratchet_right.svg",
-            '<path d="M 60,210 L 440,210 M 60,-210 L 440,-210 M 440,-250 L 440,250" fill="none" stroke="black" stroke-width="18"/>'
-            '<circle cx="120" cy="210" r="24" fill="none" stroke="black" stroke-width="14"/>'
-            '<circle cx="260" cy="210" r="24" fill="none" stroke="black" stroke-width="14"/>'
-        )
-        myosin_pullers = write_svg(
-            "act5_myosin_pullers.svg",
-            '<rect x="-280" y="-40" width="560" height="80" rx="18" fill="none" stroke="black" stroke-width="16"/>'
-            '<path d="M -180,40 L -240,195 M -40,40 L -100,195 M 40,40 L 100,195 M 180,40 L 240,195" fill="none" stroke="black" stroke-width="16"/>'
-            '<path d="M -180,-40 L -240,-195 M -40,-40 L -100,-195 M 40,-40 L 100,-195 M 180,-40 L 240,-195" fill="none" stroke="black" stroke-width="16"/>'
-        )
-        manifest["Act5_Resolution_Bridge"] = [
-            {"file": ratchet_left, "color": "blue", "pivot": (-0.25, 0.0, 0.0), "motion": "ratchet_in_left"},
-            {"file": ratchet_right, "color": "blue", "pivot": (0.25, 0.0, 0.0), "motion": "ratchet_in_right"},
-            {"file": myosin_pullers, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "ratchet_power_stroke"},
-        ]
+            mineral_ions = write_svg(
+                "arch_act4_ions.svg",
+                '<circle cx="-260" cy="-140" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="-90" cy="-220" r="32" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="120" cy="-180" r="30" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="280" cy="-150" r="26" fill="none" stroke="black" stroke-width="12"/>'
+                '<path d="M -260,-100 L -260,0 M -90,-180 L -90,-20 M 120,-140 L 120,20 M 280,-115 L 280,-10" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            tobermorite_growth = write_svg(
+                "arch_act4_crystals.svg",
+                '<path d="M -300,-10 L -220,50 L -140,-20 L -60,60 L 20,-10 L 100,70 L 180,-20 L 260,50" fill="none" stroke="black" stroke-width="18"/>'
+                '<path d="M -200,-30 L -160,80 M -40,-40 L 0,90 M 120,-30 L 160,80" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act4_Trigger_Action"] = [
+                {"file": mineral_ions, "color": "green", "pivot": (0.0, -0.2, 0.0), "motion": "drop_cascade"},
+                {"file": tobermorite_growth, "color": "green", "pivot": (0.0, 0.1, 0.0), "motion": "peel_away"},
+            ]
 
-        # ERASER SCRIBBLE MASK (Used between acts for authentic erase-and-replace)
+            interlocking_left = write_svg(
+                "arch_act5_lattice_left.svg",
+                '<path d="M -420,180 L -60,180 M -420,-180 L -60,-180 M -420,-220 L -420,220" fill="none" stroke="black" stroke-width="18"/>'
+                '<path d="M -320,180 L -240,-180 M -180,180 L -100,-180" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            interlocking_right = write_svg(
+                "arch_act5_lattice_right.svg",
+                '<path d="M 60,180 L 420,180 M 60,-180 L 420,-180 M 420,-220 L 420,220" fill="none" stroke="black" stroke-width="18"/>'
+                '<path d="M 160,180 L 240,-180 M 300,180 L 380,-180" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            healed_monolith = write_svg(
+                "arch_act5_monolith.svg",
+                '<rect x="-300" y="-60" width="600" height="120" rx="16" fill="none" stroke="black" stroke-width="18"/>'
+                '<path d="M -200,0 L 200,0 M -100,-60 L -100,60 M 100,-60 L 100,60" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act5_Resolution_Bridge"] = [
+                {"file": interlocking_left, "color": "blue", "pivot": (-0.25, 0.0, 0.0), "motion": "ratchet_in_left"},
+                {"file": interlocking_right, "color": "blue", "pivot": (0.25, 0.0, 0.0), "motion": "ratchet_in_right"},
+                {"file": healed_monolith, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "ratchet_power_stroke"},
+            ]
+
+        elif "HEIST" in cat_upper or "ESCAPE" in cat_upper:
+            # ESCAPE / HEIST: Subterranean Vault & Thermal Sensor Bypass
+            vault_door = write_svg(
+                "heist_act1_door.svg",
+                '<rect x="-350" y="-350" width="700" height="700" rx="40" fill="none" stroke="black" stroke-width="18"/>'
+                '<circle cx="0" cy="0" r="220" fill="none" stroke="black" stroke-width="16"/>',
+            )
+            dial_wheel = write_svg(
+                "heist_act1_dial.svg",
+                '<circle cx="0" cy="0" r="100" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M 0,-100 L 0,-170 M 100,0 L 170,0 M 0,100 L 0,170 M -100,0 L -170,0" fill="none" stroke="black" stroke-width="18"/>',
+            )
+            heist_callout = write_svg(
+                "heist_act1_callout.svg",
+                '<path d="M -160,-240 L -160,-330 M -190,-275 L -160,-235 L -130,-275" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="-160" cy="-210" r="24" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            manifest["Act1_Hook_Incomplete"] = [
+                {"file": vault_door, "color": "blue", "pivot": (0.0, 0.0, 0.0), "motion": "pulse_bicep"},
+                {"file": dial_wheel, "color": "blue", "pivot": (0.0, 0.0, 0.0), "motion": "hinge_flex"},
+                {"file": heist_callout, "color": "red", "pivot": (-0.16, 0.25, 0.0), "motion": "bounce_arrow"},
+            ]
+
+            laser_grid = write_svg(
+                "heist_act2_lasers.svg",
+                '<path d="M -400,240 L 400,240 M -400,80 L 400,80 M -400,-80 L 400,-80 M -400,-240 L 400,-240" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="-300" cy="240" r="18" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="300" cy="-240" r="18" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            seismic_floor = write_svg(
+                "heist_act2_seismic.svg",
+                '<path d="M -420,320 L 420,320 M -350,320 L -300,380 M -150,320 L -100,380 M 50,320 L 100,380 M 250,320 L 300,380" fill="none" stroke="black" stroke-width="16"/>',
+            )
+            central_safe = write_svg(
+                "heist_act2_safe.svg",
+                '<rect x="-200" y="-140" width="400" height="280" rx="18" fill="none" stroke="black" stroke-width="18"/>'
+                '<circle cx="0" cy="0" r="50" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M 0,0 L 35,-35" fill="none" stroke="black" stroke-width="16"/>',
+            )
+            manifest["Act2_Core_Mechanism"] = [
+                {"file": laser_grid, "color": "red", "pivot": (0.0, 0.15, 0.0), "motion": "slide_in_left"},
+                {"file": seismic_floor, "color": "blue", "pivot": (0.0, -0.25, 0.0), "motion": "slide_in_right"},
+                {"file": central_safe, "color": "yellow", "pivot": (0.0, 0.0, 0.0), "motion": "breathe_scale"},
+            ]
+
+            thermal_cone = write_svg(
+                "heist_act3_thermal.svg",
+                '<path d="M 0,-340 L -380,240 L 380,240 Z" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -220,40 L 220,40 M -140,-100 L 140,-100" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            alarm_boundary = write_svg(
+                "heist_act3_alarm.svg",
+                '<path d="M -400,-60 L 400,-60 M -400,-20 L 400,-20" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -300,-60 L -250,-20 M -100,-60 L -50,-20 M 100,-60 L 150,-20 M 300,-60 L 350,-20" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            manifest["Act3_Obstacle_Friction"] = [
+                {"file": thermal_cone, "color": "yellow", "pivot": (0.0, 0.1, 0.0), "motion": "wave_shift"},
+                {"file": alarm_boundary, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "recoil_bounce"},
+            ]
+
+            spray_cloud = write_svg(
+                "heist_act4_spray.svg",
+                '<circle cx="-180" cy="-240" r="42" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="-40" cy="-280" r="52" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="120" cy="-250" r="48" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="260" cy="-210" r="38" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -40,-220 L -40,-80 M 120,-190 L 120,-70" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            disabled_lasers = write_svg(
+                "heist_act4_bypass.svg",
+                '<path d="M -400,200 C -200,200 0,320 200,380" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -400,-200 C -200,-200 0,-320 200,-380" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act4_Trigger_Action"] = [
+                {"file": spray_cloud, "color": "green", "pivot": (0.0, 0.25, 0.0), "motion": "drop_cascade"},
+                {"file": disabled_lasers, "color": "yellow", "pivot": (-0.3, 0.0, 0.0), "motion": "peel_away"},
+            ]
+
+            jumper_left = write_svg(
+                "heist_act5_jumper_left.svg",
+                '<path d="M -420,160 L -80,160 M -420,-160 L -80,-160 M -420,-200 L -420,200" fill="none" stroke="black" stroke-width="18"/>'
+                '<circle cx="-250" cy="160" r="30" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            jumper_right = write_svg(
+                "heist_act5_jumper_right.svg",
+                '<path d="M 80,160 L 420,160 M 80,-160 L 420,-160 M 420,-200 L 420,200" fill="none" stroke="black" stroke-width="18"/>'
+                '<circle cx="250" cy="160" r="30" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            open_bolts = write_svg(
+                "heist_act5_bolts.svg",
+                '<rect x="-240" y="-50" width="480" height="100" rx="20" fill="none" stroke="black" stroke-width="18"/>'
+                '<path d="M -140,50 L -140,160 M 140,50 L 140,160 M -140,-50 L -140,-160 M 140,-50 L 140,-160" fill="none" stroke="black" stroke-width="16"/>',
+            )
+            manifest["Act5_Resolution_Bridge"] = [
+                {"file": jumper_left, "color": "blue", "pivot": (-0.25, 0.0, 0.0), "motion": "ratchet_in_left"},
+                {"file": jumper_right, "color": "blue", "pivot": (0.25, 0.0, 0.0), "motion": "ratchet_in_right"},
+                {"file": open_bolts, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "ratchet_power_stroke"},
+            ]
+
+        elif "PSYCH" in cat_upper:
+            # PSYCHOLOGY: Illusion of Control & Cognitive Bias Lattice
+            head_profile = write_svg(
+                "psych_act1_head.svg",
+                '<path d="M -220,-280 C -80,-380 180,-340 220,-180 C 240,-100 240,0 200,80 C 180,120 180,180 140,240 C 100,300 20,340 -120,340 C -180,340 -260,280 -260,200 Z" fill="none" stroke="black" stroke-width="18"/>',
+            )
+            neuron_firing = write_svg(
+                "psych_act1_neuron.svg",
+                '<path d="M -100,-160 L -20,-80 L 80,-140 L 40,0 L 120,60" fill="none" stroke="black" stroke-width="16"/>'
+                '<circle cx="-100" cy="-160" r="22" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="80" cy="-140" r="22" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="120" cy="60" r="22" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            bias_arrow = write_svg(
+                "psych_act1_arrow.svg",
+                '<path d="M -60,-320 L 40,-240 M 10,-300 L 40,-240 L -20,-240" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act1_Hook_Incomplete"] = [
+                {"file": head_profile, "color": "blue", "pivot": (0.0, 0.0, 0.0), "motion": "pulse_bicep"},
+                {"file": neuron_firing, "color": "blue", "pivot": (0.05, 0.05, 0.0), "motion": "hinge_flex"},
+                {"file": bias_arrow, "color": "red", "pivot": (0.0, 0.28, 0.0), "motion": "bounce_arrow"},
+            ]
+
+            dice_throw = write_svg(
+                "psych_act2_dice.svg",
+                '<rect x="-280" y="-80" width="160" height="160" rx="24" transform="rotate(25 -200 0)" fill="none" stroke="black" stroke-width="16"/>'
+                '<circle cx="-200" cy="0" r="14" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            trajectory_arc = write_svg(
+                "psych_act2_trajectory.svg",
+                '<path d="M -300,-180 C -150,-320 50,-240 250,-40" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M 180,-80 L 250,-40 L 220,-110" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            casino_table = write_svg(
+                "psych_act2_table.svg",
+                '<path d="M -420,180 L 420,180 M -420,300 L 420,300 M -250,180 L -250,300 M 0,180 L 0,300 M 250,180 L 250,300" fill="none" stroke="black" stroke-width="16"/>',
+            )
+            manifest["Act2_Core_Mechanism"] = [
+                {"file": dice_throw, "color": "blue", "pivot": (-0.2, 0.0, 0.0), "motion": "slide_in_left"},
+                {"file": trajectory_arc, "color": "blue", "pivot": (0.1, 0.1, 0.0), "motion": "slide_in_right"},
+                {"file": casino_table, "color": "yellow", "pivot": (0.0, -0.2, 0.0), "motion": "breathe_scale"},
+            ]
+
+            randomness_curve = write_svg(
+                "psych_act3_random.svg",
+                '<path d="M -400,100 C -300,-120 -200,220 -100,40 C 0,-180 100,180 200,-60 C 300,140 400,-100 450,20" fill="none" stroke="black" stroke-width="16"/>',
+            )
+            illusion_barrier = write_svg(
+                "psych_act3_barrier.svg",
+                '<rect x="-300" y="-120" width="600" height="80" rx="14" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -180,-120 L -120,-40 M -40,-120 L 20,-40 M 100,-120 L 160,-40" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            manifest["Act3_Obstacle_Friction"] = [
+                {"file": randomness_curve, "color": "yellow", "pivot": (0.0, 0.0, 0.0), "motion": "wave_shift"},
+                {"file": illusion_barrier, "color": "red", "pivot": (0.0, -0.1, 0.0), "motion": "recoil_bounce"},
+            ]
+
+            dopamine_surge = write_svg(
+                "psych_act4_dopamine.svg",
+                '<circle cx="-240" cy="200" r="34" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="-80" cy="240" r="40" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="100" cy="190" r="36" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="260" cy="230" r="32" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -240,160 L -240,60 M -80,195 L -80,40 M 100,150 L 100,50 M 260,190 L 260,70" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            broken_belief = write_svg(
+                "psych_act4_belief.svg",
+                '<path d="M -380,-100 C -200,-120 0,-40 240,-180" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -30,-60 L 30,-120 M 10,-50 L -10,-110" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act4_Trigger_Action"] = [
+                {"file": dopamine_surge, "color": "green", "pivot": (0.0, 0.2, 0.0), "motion": "drop_cascade"},
+                {"file": broken_belief, "color": "yellow", "pivot": (0.0, -0.1, 0.0), "motion": "peel_away"},
+            ]
+
+            lattice_left = write_svg(
+                "psych_act5_lattice_left.svg",
+                '<path d="M -420,180 L -60,180 M -420,-180 L -60,-180 M -420,-220 L -420,220" fill="none" stroke="black" stroke-width="18"/>'
+                '<circle cx="-240" cy="0" r="60" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            lattice_right = write_svg(
+                "psych_act5_lattice_right.svg",
+                '<path d="M 60,180 L 420,180 M 60,-180 L 420,-180 M 420,-220 L 420,220" fill="none" stroke="black" stroke-width="18"/>'
+                '<circle cx="240" cy="0" r="60" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            rational_cortex = write_svg(
+                "psych_act5_cortex.svg",
+                '<rect x="-260" y="-50" width="520" height="100" rx="20" fill="none" stroke="black" stroke-width="18"/>'
+                '<path d="M -150,0 L 150,0 M 0,-50 L 0,50" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act5_Resolution_Bridge"] = [
+                {"file": lattice_left, "color": "blue", "pivot": (-0.25, 0.0, 0.0), "motion": "ratchet_in_left"},
+                {"file": lattice_right, "color": "blue", "pivot": (0.25, 0.0, 0.0), "motion": "ratchet_in_right"},
+                {"file": rational_cortex, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "ratchet_power_stroke"},
+            ]
+
+        else:
+            # STEM: Kinetic Molecular / Muscle Filament Rig
+            arm_base = write_svg(
+                "stem_act1_upper_arm.svg",
+                '<path d="M -320,80 C -220,110 -80,105 20,75 L 20,-45 C -90,-15 -220,-20 -320,-40 Z" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -230,-35 C -160,-145 -60,-145 5,-40" fill="none" stroke="black" stroke-width="18"/>',
+            )
+            forearm_hinged = write_svg(
+                "stem_act1_forearm.svg",
+                '<path d="M 0,0 L 240,-180 L 285,-145 L 45,45 Z" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="275" cy="-175" r="48" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            hook_callout = write_svg(
+                "stem_act1_callout.svg",
+                '<path d="M -115,-175 L -115,-280 M -150,-215 L -115,-170 L -80,-215" fill="none" stroke="black" stroke-width="12"/>'
+                '<path d="M -240,-330 L 20,-330 M -210,-370 L -30,-370" fill="none" stroke="black" stroke-width="10"/>',
+            )
+            manifest["Act1_Hook_Incomplete"] = [
+                {"file": arm_base, "color": "blue", "pivot": (0.0, 0.0, 0.0), "motion": "pulse_bicep"},
+                {"file": forearm_hinged, "color": "blue", "pivot": (0.15, 0.05, 0.0), "motion": "hinge_flex"},
+                {"file": hook_callout, "color": "red", "pivot": (0.0, 0.3, 0.0), "motion": "bounce_arrow"},
+            ]
+
+            actin_top = write_svg(
+                "stem_act2_actin_top.svg",
+                '<path d="M -420,220 C -280,245 -140,195 0,220 C 140,245 280,195 420,220" fill="none" stroke="black" stroke-width="16"/>'
+                '<circle cx="-300" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="-150" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="0" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="150" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="300" cy="220" r="28" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            actin_bottom = write_svg(
+                "stem_act2_actin_bottom.svg",
+                '<path d="M -420,-220 C -280,-195 -140,-245 0,-220 C 140,-195 280,-245 420,-220" fill="none" stroke="black" stroke-width="16"/>'
+                '<circle cx="-300" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="-150" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="0" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="150" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>'
+                '<circle cx="300" cy="-220" r="28" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            myosin_core = write_svg(
+                "stem_act2_myosin.svg",
+                '<rect x="-360" y="-45" width="720" height="90" rx="20" fill="none" stroke="black" stroke-width="18"/>'
+                '<path d="M -250,45 L -210,125 M -50,45 L -10,125 M 150,45 L 190,125" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -250,-45 L -210,-125 M -50,-45 L -10,-125 M 150,-45 L 190,-125" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act2_Core_Mechanism"] = [
+                {"file": actin_top, "color": "blue", "pivot": (0.0, 0.22, 0.0), "motion": "slide_in_left"},
+                {"file": actin_bottom, "color": "blue", "pivot": (0.0, -0.22, 0.0), "motion": "slide_in_right"},
+                {"file": myosin_core, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "breathe_scale"},
+            ]
+
+            caution_tape = write_svg(
+                "stem_act3_caution.svg",
+                '<path d="M -430,175 L 430,175 M -430,135 L 430,135" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -380,175 L -330,135 M -260,175 L -210,135 M -140,175 L -90,135 M -20,175 L 30,135 M 100,175 L 150,135 M 220,175 L 270,135" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            blocked_heads = write_svg(
+                "stem_act3_blocked.svg",
+                '<path d="M -220,0 L -180,115 C -160,135 -130,115 -145,85 L -190,0" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M 40,0 L 80,115 C 100,135 130,115 115,85 L 70,0" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -60,195 L 20,275 M 20,195 L -60,275" fill="none" stroke="black" stroke-width="18"/>',
+            )
+            manifest["Act3_Obstacle_Friction"] = [
+                {"file": caution_tape, "color": "yellow", "pivot": (0.0, 0.15, 0.0), "motion": "wave_shift"},
+                {"file": blocked_heads, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "recoil_bounce"},
+            ]
+
+            calcium_swarm = write_svg(
+                "stem_act4_calcium.svg",
+                '<circle cx="-280" cy="340" r="36" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="-90" cy="390" r="36" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="110" cy="350" r="36" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="290" cy="380" r="36" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -280,290 L -280,180 M -90,340 L -90,210 M 110,300 L 110,180 M 290,330 L 290,200" fill="none" stroke="black" stroke-width="12"/>',
+            )
+            peeling_tape = write_svg(
+                "stem_act4_peeled.svg",
+                '<path d="M -420,150 C -180,160 80,260 390,410" fill="none" stroke="black" stroke-width="14"/>'
+                '<path d="M -390,120 C -150,130 110,230 410,380" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            manifest["Act4_Trigger_Action"] = [
+                {"file": calcium_swarm, "color": "green", "pivot": (0.0, 0.35, 0.0), "motion": "drop_cascade"},
+                {"file": peeling_tape, "color": "yellow", "pivot": (-0.4, 0.15, 0.0), "motion": "peel_away"},
+            ]
+
+            ratchet_left = write_svg(
+                "stem_act5_ratchet_left.svg",
+                '<path d="M -440,210 L -60,210 M -440,-210 L -60,-210 M -440,-250 L -440,250" fill="none" stroke="black" stroke-width="18"/>'
+                '<circle cx="-260" cy="210" r="24" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="-120" cy="210" r="24" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            ratchet_right = write_svg(
+                "stem_act5_ratchet_right.svg",
+                '<path d="M 60,210 L 440,210 M 60,-210 L 440,-210 M 440,-250 L 440,250" fill="none" stroke="black" stroke-width="18"/>'
+                '<circle cx="120" cy="210" r="24" fill="none" stroke="black" stroke-width="14"/>'
+                '<circle cx="260" cy="210" r="24" fill="none" stroke="black" stroke-width="14"/>',
+            )
+            myosin_pullers = write_svg(
+                "stem_act5_pullers.svg",
+                '<rect x="-280" y="-40" width="560" height="80" rx="18" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -180,40 L -240,195 M -40,40 L -100,195 M 40,40 L 100,195 M 180,40 L 240,195" fill="none" stroke="black" stroke-width="16"/>'
+                '<path d="M -180,-40 L -240,-195 M -40,-40 L -100,-195 M 40,-40 L 100,-195 M 180,-40 L 240,-195" fill="none" stroke="black" stroke-width="16"/>',
+            )
+            manifest["Act5_Resolution_Bridge"] = [
+                {"file": ratchet_left, "color": "blue", "pivot": (-0.25, 0.0, 0.0), "motion": "ratchet_in_left"},
+                {"file": ratchet_right, "color": "blue", "pivot": (0.25, 0.0, 0.0), "motion": "ratchet_in_right"},
+                {"file": myosin_pullers, "color": "red", "pivot": (0.0, 0.0, 0.0), "motion": "ratchet_power_stroke"},
+            ]
+
+        # ERASER SCRIBBLE MASK (Used between acts for authentic erase-and-replace across all categories)
         eraser_svg = write_svg(
             "eraser_scribble.svg",
             '<path d="M -450,380 L 450,310 L -440,210 L 440,120 L -430,20 L 450,-80 L -440,-190 L 430,-290 L -400,-380" '
-            'fill="none" stroke="black" stroke-width="85" stroke-linecap="round" stroke-linejoin="round"/>'
+            'fill="none" stroke="black" stroke-width="85" stroke-linecap="round" stroke-linejoin="round"/>',
         )
         manifest["_eraser"] = [{"file": eraser_svg, "color": "paper_erase", "pivot": (0.0, 0.0, 0.0), "motion": "none"}]
 

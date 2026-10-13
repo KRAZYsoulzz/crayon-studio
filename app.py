@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import time
 from typing import Any, Dict, List, Optional
@@ -93,6 +94,15 @@ def load_app_config() -> Dict[str, Any]:
                 default_config.update(saved)
         except Exception as e:
             logger.warning("Could not read config.json: %s", e)
+
+    bp = default_config.get("blender_path", "")
+    if not bp or (not os.path.exists(bp) and not shutil.which(bp)):
+        default_config["blender_path"] = BlenderOrchestrator.find_blender_executable(CONFIG_PATH)
+
+    fp = default_config.get("ffmpeg_path", "")
+    if not fp or (not os.path.exists(fp) and not shutil.which(fp)):
+        default_config["ffmpeg_path"] = FFmpegCompositor.find_ffmpeg_executable(CONFIG_PATH)
+
     return default_config
 
 
@@ -925,13 +935,15 @@ class CrayonStudioApp(QMainWindow):
         # Script text editor
         self.text_script = QTextEdit()
         default_script = (
-            "Why can ancient Roman harbors withstand two thousand years of crashing ocean waves, "
-            "while modern concrete cracks after fifty years? "
-            "Scientists cracked the secret using electron microscopes. The Romans mixed volcanic ash "
-            "with slaked lime and seawater. When waves hit the concrete, it triggered a chemical reaction "
-            "that grew interlocking mineral crystals called aluminous tobermorite. "
-            "Instead of eroding the wall, the ocean was actually cementing it tighter every single day. "
-            "If you want to sketch out structural mechanics like this yourself, check out the textured drafting book below."
+            "Why can ancient Roman harbors withstand two thousand years of crashing ocean waves, while modern concrete structures crack and crumble after fifty years? "
+            "Scientists finally unlocked this mystery using electron microscopes and high-energy X-ray diffraction. "
+            "The Romans didn't just mix sand and gravel; they forged their concrete using reactive volcanic ash called pozzolana, slaked lime, and seawater. "
+            "When saltwater infiltrates the microscopic pores, it doesn't degrade the internal framework. "
+            "Instead, it dissolves the volcanic ash and triggers an active hydrothermal reaction. "
+            "This chemical reaction precipitates interlocking crystals of a rare mineral called aluminous tobermorite. "
+            "These microscopic crystals expand into microscopic voids like biological bone tissue, sealing microcracks before structural damage can spread. "
+            "Instead of eroding the seawall, the immense hydraulic pressure of the ocean actually cements the Roman concrete tighter with every single passing decade. "
+            "Modern architects are now racing to replicate this self-healing chemistry for new deep-sea mega-structures, but it all begins by questioning:"
         )
         self.text_script.setPlainText(default_script)
         self.text_script.textChanged.connect(self._on_script_text_changed)
@@ -1446,6 +1458,7 @@ class CrayonStudioApp(QMainWindow):
             category=self.combo_category.currentText(),
             target_duration=self.spin_duration.value(),
             tiktok_product=self.combo_product.currentText(),
+            topic=topic,
         )
         self.text_script.setPlainText(new_script)
 
@@ -1523,6 +1536,7 @@ class CrayonStudioApp(QMainWindow):
             category=self.combo_category.currentText(),
             target_duration=self.spin_duration.value(),
             tiktok_product=self.combo_product.currentText(),
+            topic=self.input_title.text().strip(),
         )
         self.text_script.setPlainText(revised)
         self.terminal_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] ✨ Applied AI revision: '{prompt}'")
@@ -1564,6 +1578,8 @@ class CrayonStudioApp(QMainWindow):
         self.refresh_calendar()
 
     def _on_run_pipeline(self):
+        self.media_player.stop()
+        self.media_player.setSource(QUrl())
         title = self.input_title.text().strip() or "Untitled Crayon Project"
         slug = re.sub(r"[^a-zA-Z0-9_-]", "-", title.lower())[:50]
         self.active_project_slug = slug
@@ -1646,6 +1662,8 @@ class CrayonStudioApp(QMainWindow):
         QMessageBox.critical(self, "Pipeline Error", f"Execution encountered an error:\n{err}")
 
     def _on_render_blender_animation(self):
+        self.media_player.stop()
+        self.media_player.setSource(QUrl())
         slug = self.active_project_slug
         proj_dir = os.path.join(PROJECTS_DIR, slug)
         words_json = os.path.join(proj_dir, "words_timestamp.json")
@@ -1905,11 +1923,24 @@ class CrayonStudioApp(QMainWindow):
         if prod_idx >= 0:
             self.combo_product.setCurrentIndex(prod_idx)
 
-        # Check if voiceover file exists in projects/
-        vo_path = os.path.join(PROJECTS_DIR, self.active_project_slug, "voiceover.wav")
-        if os.path.exists(vo_path):
+        # Check if rendered MP4 or voiceover file exists in projects/
+        proj_dir = os.path.join(PROJECTS_DIR, self.active_project_slug)
+        final_mp4 = os.path.join(proj_dir, f"{self.active_project_slug}_final.mp4")
+        vo_path = os.path.join(proj_dir, "voiceover.wav")
+
+        if os.path.exists(final_mp4):
+            self.current_media_path = final_mp4
+            self.player_stack.setCurrentIndex(1)
+            self.media_player.setSource(QUrl.fromLocalFile(final_mp4))
+            self.btn_play_pause.setText("▶ Play")
+        elif os.path.exists(vo_path):
             self.current_media_path = vo_path
+            self.player_stack.setCurrentIndex(0)
             self.media_player.setSource(QUrl.fromLocalFile(vo_path))
+            self.btn_play_pause.setText("▶ Play")
+        else:
+            self.current_media_path = None
+            self.player_stack.setCurrentIndex(0)
 
         self.preview_canvas.update_metadata(
             title=proj.get("title", ""),
