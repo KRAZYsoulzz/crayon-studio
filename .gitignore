@@ -39,6 +39,8 @@ projects/*
 !projects/.gitkeep
 
 # SQLite database files and journals
+database/*.db
+*.db
 database/*.db-journal
 database/*.db-wal
 database/*.db-shm
