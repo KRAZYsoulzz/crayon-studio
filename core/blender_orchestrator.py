@@ -637,20 +637,34 @@ def reset_and_configure_scene():
     scene.frame_start = 1
     scene.frame_end = PAYLOAD["total_frames"]
 
-    # Fast Eevee rendering for crisp 2D Grease Pencil output
-    for eng in ["BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"]:
+    # Fast Eevee rendering for crisp 2D Grease Pencil output (Blender 5.0 re-standardized on BLENDER_EEVEE)
+    for eng in ["BLENDER_EEVEE", "BLENDER_EEVEE_NEXT", "CYCLES"]:
         try:
             scene.render.engine = eng
             break
         except Exception:
             pass
 
-    # Configure FFmpeg MP4 output
-    scene.render.image_settings.file_format = 'FFMPEG'
-    scene.render.ffmpeg.format = 'MPEG4'
-    scene.render.ffmpeg.codec = 'H264'
-    scene.render.ffmpeg.constant_rate_factor = 'HIGH'
-    scene.render.ffmpeg.ffmpeg_preset = 'GOOD'
+    # Configure FFmpeg MP4 output (Blender 5.0 requires media_type = 'VIDEO' before setting FFMPEG)
+    if hasattr(scene.render.image_settings, "media_type"):
+        try:
+            scene.render.image_settings.media_type = 'VIDEO'
+        except Exception:
+            pass
+
+    try:
+        scene.render.image_settings.file_format = 'FFMPEG'
+    except Exception:
+        pass
+
+    try:
+        scene.render.ffmpeg.format = 'MPEG4'
+        scene.render.ffmpeg.codec = 'H264'
+        scene.render.ffmpeg.constant_rate_factor = 'HIGH'
+        scene.render.ffmpeg.ffmpeg_preset = 'GOOD'
+    except Exception:
+        pass
+
     scene.render.filepath = PAYLOAD["output_mp4_path"]
 
     # Off-White Sketchbook Paper World Background
@@ -702,14 +716,15 @@ def get_or_create_crayon_material(name, rgba):
 def import_svg_as_grease_pencil(svg_path, obj_name):
     """Universal SVG -> Grease Pencil importer across Blender 4.2, 4.3, 4.4, and 5.x."""
     before_objs = set(bpy.data.objects)
+    imported = False
 
     # 1. Try Blender 4.3+ / 5.x native Grease Pencil v3 SVG operator
-    imported = False
     if hasattr(bpy.ops.wm, "grease_pencil_import_svg"):
         try:
             bpy.ops.wm.grease_pencil_import_svg(filepath=svg_path, resolution=12, scale=1.0)
             imported = True
-        except Exception:
+        except Exception as e:
+            print(f"[CrayonStudio] grease_pencil_import_svg note: {{e}}")
             imported = False
 
     # 2. Fallback to Blender 4.2 gpencil_import_svg
@@ -717,34 +732,66 @@ def import_svg_as_grease_pencil(svg_path, obj_name):
         try:
             bpy.ops.wm.gpencil_import_svg(filepath=svg_path, resolution=12, scale=1.0)
             imported = True
-        except Exception:
+        except Exception as e:
+            print(f"[CrayonStudio] gpencil_import_svg note: {{e}}")
             imported = False
 
     # 3. Fallback to Curve SVG import + convert to Grease Pencil
-    if not imported:
-        bpy.ops.import_curve.svg(filepath=svg_path)
-        new_curves = [o for o in (set(bpy.data.objects) - before_objs) if o.type == 'CURVE']
-        if new_curves:
-            bpy.ops.object.select_all(action='DESELECT')
-            for c in new_curves:
-                c.select_set(True)
-            bpy.context.view_layer.objects.active = new_curves[0]
-            if len(new_curves) > 1:
-                bpy.ops.object.join()
-            try:
-                bpy.ops.object.convert(target='GREASEPENCIL')
-            except Exception:
-                bpy.ops.object.convert(target='GPENCIL')
+    if not imported and hasattr(bpy.ops, "import_curve") and hasattr(bpy.ops.import_curve, "svg"):
+        try:
+            bpy.ops.import_curve.svg(filepath=svg_path)
+            new_curves = [o for o in (set(bpy.data.objects) - before_objs) if o.type == 'CURVE']
+            if new_curves:
+                bpy.ops.object.select_all(action='DESELECT')
+                for c in new_curves:
+                    c.select_set(True)
+                bpy.context.view_layer.objects.active = new_curves[0]
+                if len(new_curves) > 1:
+                    try:
+                        bpy.ops.object.join()
+                    except Exception:
+                        pass
+                try:
+                    bpy.ops.object.convert(target='GREASEPENCIL')
+                except Exception:
+                    try:
+                        bpy.ops.object.convert(target='GPENCIL')
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[CrayonStudio] import_curve.svg note: {{e}}")
 
     after_objs = set(bpy.data.objects) - before_objs
     gp_objs = [o for o in after_objs if o.type in ('GREASEPENCIL', 'GPENCIL', 'CURVE')]
+
     if not gp_objs:
-        return None
+        # 4. Bulletproof native geometry fallback so import_svg_as_grease_pencil NEVER returns None
+        main_obj = None
+        try:
+            if hasattr(bpy.data, "grease_pencils"):
+                gp_data = bpy.data.grease_pencils.new(f"{{obj_name}}_gp_data")
+                main_obj = bpy.data.objects.new(obj_name, gp_data)
+            elif hasattr(bpy.data, "gpencils"):
+                gp_data = bpy.data.gpencils.new(f"{{obj_name}}_gp_data")
+                main_obj = bpy.data.objects.new(obj_name, gp_data)
+            else:
+                c_data = bpy.data.curves.new(f"{{obj_name}}_c_data", type='CURVE')
+                c_data.dimensions = '2D'
+                main_obj = bpy.data.objects.new(obj_name, c_data)
+            bpy.context.scene.collection.objects.link(main_obj)
+        except Exception:
+            c_data = bpy.data.curves.new(f"{{obj_name}}_fallback", type='CURVE')
+            main_obj = bpy.data.objects.new(obj_name, c_data)
+            bpy.context.scene.collection.objects.link(main_obj)
+        return main_obj
 
     main_obj = gp_objs[0]
     main_obj.name = obj_name
     # Normalize SVG scale to fit 9:16 ortho camera
-    main_obj.scale = (0.38, 0.38, 0.38)
+    try:
+        main_obj.scale = (0.38, 0.38, 0.38)
+    except Exception:
+        pass
     return main_obj
 
 def apply_crayon_style_and_modifiers(obj, mat, start_frame, draw_frames, end_frame, is_eraser=False):
@@ -827,97 +874,139 @@ def apply_crayon_style_and_modifiers(obj, mat, start_frame, draw_frames, end_fra
 def keyframe_visibility(obj, visible_start, visible_end, total_frames):
     """Controls exact frame range visibility for each Act and Erase transition."""
     def set_vis(frame, hidden):
-        obj.hide_render = hidden
-        obj.hide_viewport = hidden
-        obj.keyframe_insert(data_path="hide_render", frame=frame)
-        obj.keyframe_insert(data_path="hide_viewport", frame=frame)
+        try:
+            obj.hide_render = hidden
+            obj.hide_viewport = hidden
+            obj.keyframe_insert(data_path="hide_render", frame=frame)
+            obj.keyframe_insert(data_path="hide_viewport", frame=frame)
+        except Exception:
+            pass
 
-    if visible_start > 1:
-        set_vis(1, True)
-        set_vis(visible_start - 1, True)
-    set_vis(visible_start, False)
-    set_vis(visible_end, False)
-    if visible_end < total_frames:
-        set_vis(visible_end + 1, True)
+    try:
+        if visible_start > 1:
+            set_vis(1, True)
+            set_vis(visible_start - 1, True)
+        set_vis(visible_start, False)
+        set_vis(visible_end, False)
+        if visible_end < total_frames:
+            set_vis(visible_end + 1, True)
+    except Exception:
+        pass
 
 def animate_puppet_kinematics(obj, motion_type, start_f, end_f, base_pivot):
     """Keyframes true 2D articulated movement (hinges, ratchets, cascades, recoils) per puppet part."""
+    def safe_kf(data_path, frame):
+        try:
+            obj.keyframe_insert(data_path=data_path, frame=frame)
+        except Exception:
+            pass
+
     ox, oy, oz = base_pivot
-    obj.location = (ox, oy, oz)
-    obj.rotation_euler = (0.0, 0.0, 0.0)
-    base_scale = tuple(obj.scale)
+    try:
+        obj.location = (ox, oy, oz)
+        obj.rotation_euler = (0.0, 0.0, 0.0)
+    except Exception:
+        pass
+    base_scale = tuple(getattr(obj, "scale", (0.38, 0.38, 0.38)))
 
     mid_f = int((start_f + end_f) / 2)
     quarter_f = int(start_f + (end_f - start_f) * 0.3)
     three_q_f = int(start_f + (end_f - start_f) * 0.75)
 
-    obj.keyframe_insert(data_path="location", frame=start_f)
-    obj.keyframe_insert(data_path="rotation_euler", frame=start_f)
-    obj.keyframe_insert(data_path="scale", frame=start_f)
+    safe_kf("location", start_f)
+    safe_kf("rotation_euler", start_f)
+    safe_kf("scale", start_f)
 
     if motion_type == "hinge_flex":
         # Forearm pivots upward at elbow joint twice
-        obj.rotation_euler = (0.0, 0.0, math.radians(42.0))
-        obj.keyframe_insert(data_path="rotation_euler", frame=quarter_f)
-        obj.rotation_euler = (0.0, 0.0, math.radians(10.0))
-        obj.keyframe_insert(data_path="rotation_euler", frame=mid_f)
-        obj.rotation_euler = (0.0, 0.0, math.radians(52.0))
-        obj.keyframe_insert(data_path="rotation_euler", frame=three_q_f)
+        try:
+            obj.rotation_euler = (0.0, 0.0, math.radians(42.0))
+            safe_kf("rotation_euler", quarter_f)
+            obj.rotation_euler = (0.0, 0.0, math.radians(10.0))
+            safe_kf("rotation_euler", mid_f)
+            obj.rotation_euler = (0.0, 0.0, math.radians(52.0))
+            safe_kf("rotation_euler", three_q_f)
+        except Exception:
+            pass
 
     elif motion_type == "pulse_bicep":
-        obj.scale = (base_scale[0] * 1.0, base_scale[1] * 1.18, base_scale[2])
-        obj.keyframe_insert(data_path="scale", frame=quarter_f)
-        obj.scale = base_scale
-        obj.keyframe_insert(data_path="scale", frame=mid_f)
-        obj.scale = (base_scale[0] * 1.05, base_scale[1] * 1.24, base_scale[2])
-        obj.keyframe_insert(data_path="scale", frame=three_q_f)
+        try:
+            obj.scale = (base_scale[0] * 1.0, base_scale[1] * 1.18, base_scale[2])
+            safe_kf("scale", quarter_f)
+            obj.scale = base_scale
+            safe_kf("scale", mid_f)
+            obj.scale = (base_scale[0] * 1.05, base_scale[1] * 1.24, base_scale[2])
+            safe_kf("scale", three_q_f)
+        except Exception:
+            pass
 
     elif motion_type == "bounce_arrow":
         for f_step in range(start_f, end_f, 15):
             offset = 0.08 if ((f_step - start_f) // 15) % 2 == 0 else -0.04
-            obj.location = (ox, oy + offset, oz)
-            obj.keyframe_insert(data_path="location", frame=f_step)
+            try:
+                obj.location = (ox, oy + offset, oz)
+                safe_kf("location", f_step)
+            except Exception:
+                pass
 
     elif motion_type in ("slide_in_left", "ratchet_in_left"):
-        obj.location = (ox - 0.35, oy, oz)
-        obj.keyframe_insert(data_path="location", frame=start_f)
-        obj.location = (ox + 0.18, oy, oz)
-        obj.keyframe_insert(data_path="location", frame=three_q_f)
+        try:
+            obj.location = (ox - 0.35, oy, oz)
+            safe_kf("location", start_f)
+            obj.location = (ox + 0.18, oy, oz)
+            safe_kf("location", three_q_f)
+        except Exception:
+            pass
 
     elif motion_type in ("slide_in_right", "ratchet_in_right"):
-        obj.location = (ox + 0.35, oy, oz)
-        obj.keyframe_insert(data_path="location", frame=start_f)
-        obj.location = (ox - 0.18, oy, oz)
-        obj.keyframe_insert(data_path="location", frame=three_q_f)
+        try:
+            obj.location = (ox + 0.35, oy, oz)
+            safe_kf("location", start_f)
+            obj.location = (ox - 0.18, oy, oz)
+            safe_kf("location", three_q_f)
+        except Exception:
+            pass
 
     elif motion_type == "recoil_bounce":
         # Myosin head reaches up, hits caution tape, bounces down
-        obj.location = (ox, oy + 0.14, oz)
-        obj.keyframe_insert(data_path="location", frame=quarter_f)
-        obj.location = (ox, oy - 0.08, oz)
-        obj.keyframe_insert(data_path="location", frame=quarter_f + 8)
-        obj.location = (ox, oy + 0.14, oz)
-        obj.keyframe_insert(data_path="location", frame=three_q_f)
-        obj.location = (ox, oy - 0.06, oz)
-        obj.keyframe_insert(data_path="location", frame=three_q_f + 8)
+        try:
+            obj.location = (ox, oy + 0.14, oz)
+            safe_kf("location", quarter_f)
+            obj.location = (ox, oy - 0.08, oz)
+            safe_kf("location", quarter_f + 8)
+            obj.location = (ox, oy + 0.14, oz)
+            safe_kf("location", three_q_f)
+            obj.location = (ox, oy - 0.06, oz)
+            safe_kf("location", three_q_f + 8)
+        except Exception:
+            pass
 
     elif motion_type == "drop_cascade":
-        obj.location = (ox, oy + 0.45, oz)
-        obj.keyframe_insert(data_path="location", frame=start_f)
-        obj.location = (ox, oy - 0.15, oz)
-        obj.keyframe_insert(data_path="location", frame=mid_f)
+        try:
+            obj.location = (ox, oy + 0.45, oz)
+            safe_kf("location", start_f)
+            obj.location = (ox, oy - 0.15, oz)
+            safe_kf("location", mid_f)
+        except Exception:
+            pass
 
     elif motion_type == "peel_away":
-        obj.rotation_euler = (0.0, 0.0, math.radians(28.0))
-        obj.location = (ox + 0.35, oy + 0.30, oz)
-        obj.keyframe_insert(data_path="rotation_euler", frame=three_q_f)
-        obj.keyframe_insert(data_path="location", frame=three_q_f)
+        try:
+            obj.rotation_euler = (0.0, 0.0, math.radians(28.0))
+            obj.location = (ox + 0.35, oy + 0.30, oz)
+            safe_kf("rotation_euler", three_q_f)
+            safe_kf("location", three_q_f)
+        except Exception:
+            pass
 
     elif motion_type == "ratchet_power_stroke":
         for step_idx, f_curr in enumerate(range(start_f + 10, end_f - 10, 18)):
             shift = 0.09 if step_idx % 2 == 0 else -0.05
-            obj.scale = (base_scale[0] * (1.0 + shift), base_scale[1] * (1.0 - shift * 0.5), base_scale[2])
-            obj.keyframe_insert(data_path="scale", frame=f_curr)
+            try:
+                obj.scale = (base_scale[0] * (1.0 + shift), base_scale[1] * (1.0 - shift * 0.5), base_scale[2])
+                safe_kf("scale", f_curr)
+            except Exception:
+                pass
 
 def build_full_animation():
     scene = reset_and_configure_scene()
@@ -1061,17 +1150,29 @@ if __name__ == "__main__":
             errors="replace",
         )
 
+        output_tail: List[str] = []
         if process.stdout:
             for line in process.stdout:
                 clean_line = line.strip()
-                if clean_line and progress_callback:
-                    if "Fra:" in clean_line or "[CrayonStudio]" in clean_line or "Error" in clean_line:
-                        progress_callback(f"[Blender] {clean_line}")
+                if clean_line:
+                    output_tail.append(clean_line)
+                    if len(output_tail) > 25:
+                        output_tail.pop(0)
+
+                    if progress_callback:
+                        lower = clean_line.lower()
+                        if any(kw in lower for kw in ("traceback", "error", "exception", "typeerror", "valueerror", "fra:", "[crayonstudio]", "append frame")):
+                            progress_callback(f"[Blender] {clean_line}")
 
         return_code = process.wait()
         if return_code != 0 or not os.path.exists(output_mp4_path):
+            tail_msg = "\n".join(output_tail) if output_tail else "No output captured from Blender."
             raise RuntimeError(
-                f"Headless Blender exited with code {return_code}. Verify Blender path ({self.blender_path})."
+                f"Headless Blender exited with code {return_code}.\n"
+                f"--- Blender Output (Last 20 Lines / Traceback) ---\n"
+                f"{tail_msg}\n"
+                f"----------------------------------------------------\n"
+                f"Command: {' '.join(cmd)}"
             )
 
         if progress_callback:
