@@ -1,0 +1,5 @@
+# Blender 9:16 Base Paper Scene Template Marker
+# This file serves as the scene descriptor and binary placeholder for base_paper.blend.
+# Target Camera: Focal Length 50mm, Orthographic/Perspective Hybrid
+# Resolution: 1080 x 1920 (9:16 Vertical)
+# Base Mesh: Beveled Paper Plane with displacement modifier for hand-crafted organic texture.

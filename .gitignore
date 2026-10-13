@@ -1,0 +1,45 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE / Editor configuration
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Operating System files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs & temporary files
+*.log
+*.tmp
+*.temp
+
+# Blender backup files
+*.blend1
+*.blend2
+*.blend@
+
+# Project generated renders and audio artifacts
+projects/*
+!projects/.gitkeep
+
+# SQLite database files and journals
+database/*.db-journal
+database/*.db-wal
+database/*.db-shm
+database/*.sqlite3-journal
