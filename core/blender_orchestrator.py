@@ -40,15 +40,20 @@ class BlenderOrchestrator:
     @staticmethod
     def find_blender_executable(config_path: str = "config.json") -> str:
         """Locates the Blender binary via config.json, system PATH, or standard OS install paths."""
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-                    custom = cfg.get("blender_path", "")
-                    if custom and os.path.exists(custom):
-                        return custom
-            except Exception:
-                pass
+        possible_configs = [
+            config_path,
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json"),
+        ]
+        for cp in possible_configs:
+            if os.path.exists(cp):
+                try:
+                    with open(cp, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                        custom = cfg.get("blender_path", "")
+                        if custom and os.path.exists(custom):
+                            return custom
+                except Exception:
+                    pass
 
         path_bin = shutil.which("blender")
         if path_bin:

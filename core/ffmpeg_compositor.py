@@ -39,15 +39,20 @@ class FFmpegCompositor:
     @staticmethod
     def find_ffmpeg_executable(config_path: str = "config.json") -> str:
         """Locates the FFmpeg executable via config.json, system PATH, or common Windows install locations."""
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-                    custom = cfg.get("ffmpeg_path", "")
-                    if custom and os.path.exists(custom):
-                        return custom
-            except Exception:
-                pass
+        possible_configs = [
+            config_path,
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json"),
+        ]
+        for cp in possible_configs:
+            if os.path.exists(cp):
+                try:
+                    with open(cp, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                        custom = cfg.get("ffmpeg_path", "")
+                        if custom and os.path.exists(custom):
+                            return custom
+                except Exception:
+                    pass
 
         path_bin = shutil.which("ffmpeg")
         if path_bin:
@@ -56,8 +61,12 @@ class FFmpegCompositor:
         if sys.platform == "win32":
             search_patterns = [
                 os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\*ffmpeg*\*\bin\ffmpeg.exe"),
+                os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\*FFmpeg*\*\bin\ffmpeg.exe"),
+                os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\*Gyan*\*\bin\ffmpeg.exe"),
+                os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links\ffmpeg.exe"),
                 r"C:\ffmpeg\bin\ffmpeg.exe",
                 r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+                r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
                 r"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
             ]
             candidates = []
