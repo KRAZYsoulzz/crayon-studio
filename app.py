@@ -604,12 +604,44 @@ class VerticalPreviewCanvas(QWidget):
         self.hook_text = "Watch what happens next..."
         self.category = "STEM"
         self.words: List[Dict[str, Any]] = []
+        self.blocks: List[Dict[str, Any]] = []
         self.total_duration_ms = 65000
         self.is_playing = False
 
     def set_word_timestamps(self, words: List[Dict[str, Any]]):
-        """Sets word timestamps for live dynamic kinetic subtitle rendering."""
+        """Sets word timestamps and groups them into stable 2-3 line thought blocks."""
         self.words = words or []
+        self.blocks = []
+        if self.words:
+            current_block: List[Dict[str, Any]] = []
+            for idx, w in enumerate(self.words):
+                current_block.append(w)
+                txt = str(w.get("word", "")).strip()
+                ends_sent = any(txt.endswith(p) for p in (".", "!", "?")) and len(current_block) >= 4
+                ends_clause = any(txt.endswith(p) for p in (",", ";", ":", "—")) and len(current_block) >= 6
+                max_reach = len(current_block) >= 8
+                is_last = (idx == len(self.words) - 1)
+
+                if ends_sent or ends_clause or max_reach or is_last:
+                    b_words = [x.get("word", "") for x in current_block]
+                    tw = len(b_words)
+                    if tw <= 4:
+                        lines = [" ".join(b_words)]
+                    elif tw <= 7:
+                        mid = (tw + 1) // 2
+                        lines = [" ".join(b_words[:mid]), " ".join(b_words[mid:])]
+                    else:
+                        p1 = (tw + 2) // 3
+                        p2 = p1 + (tw - p1 + 1) // 2
+                        lines = [" ".join(b_words[:p1]), " ".join(b_words[p1:p2]), " ".join(b_words[p2:])]
+
+                    self.blocks.append({
+                        "start": float(current_block[0].get("start", 0.0)),
+                        "end": float(current_block[-1].get("end", 0.0)),
+                        "text": "\n".join(lines),
+                        "words": current_block,
+                    })
+                    current_block = []
         self.update()
 
     def update_metadata(self, title: str, hook: str, category: str):
@@ -719,57 +751,59 @@ class VerticalPreviewCanvas(QWidget):
                 2,
             )
 
-        # Dynamic Kinetic Subtitle Overlay
+        # Dynamic 2-3 Line Block Subtitle Overlay
         current_sec = self.playback_pos_ms / 1000.0
-        active_subtitle = ""
-        active_word_str = ""
+        active_block_text = ""
 
-        if self.words:
-            active_idx = -1
-            for idx, w in enumerate(self.words):
-                if w.get("start", 0.0) <= current_sec <= w.get("end", 0.0) + 0.12:
-                    active_idx = idx
-                    active_word_str = w.get("word", "")
+        if self.blocks:
+            for b in self.blocks:
+                if b["start"] <= current_sec <= b["end"] + 0.30:
+                    active_block_text = b["text"]
                     break
 
-            if active_idx == -1:
-                for idx in range(len(self.words) - 1, -1, -1):
-                    if self.words[idx].get("start", 0.0) <= current_sec:
-                        active_idx = idx
-                        active_word_str = self.words[idx].get("word", "")
+            if not active_block_text:
+                for b in reversed(self.blocks):
+                    if b["start"] <= current_sec:
+                        active_block_text = b["text"]
                         break
 
-            if active_idx != -1:
-                chunk_start = max(0, active_idx - 1)
-                chunk_end = min(len(self.words), chunk_start + 4)
-                words_chunk = [self.words[k].get("word", "") for k in range(chunk_start, chunk_end)]
-                active_subtitle = " ".join(words_chunk)
-            elif current_sec < (self.words[0].get("start", 0.0) if self.words else 0.5):
-                active_subtitle = self.hook_text or self.title_text
-        else:
-            active_subtitle = self.hook_text or self.title_text
+            if not active_block_text and current_sec < self.blocks[0]["start"]:
+                active_block_text = self.blocks[0]["text"]
 
-        if not active_subtitle:
-            active_subtitle = self.hook_text or self.title_text
+        if not active_block_text:
+            words_hook = (self.hook_text or self.title_text).split()
+            if len(words_hook) > 8:
+                mid = len(words_hook) // 2
+                active_block_text = " ".join(words_hook[:mid]) + "\n" + " ".join(words_hook[mid:])
+            else:
+                active_block_text = self.hook_text or self.title_text
 
-        painter.setPen(QColor("#FFFFFF"))
+        # Draw comfortable 2-3 line subtitle card
         sub_font = QFont("Segoe UI", 12, QFont.Bold)
         painter.setFont(sub_font)
-        text_rect = painter.fontMetrics().boundingRect(
-            x + 16,
-            center_y + 120,
-            target_w - 32,
-            90,
-            Qt.AlignCenter | Qt.TextWordWrap,
-            active_subtitle,
-        )
-        # Background shadow card with dynamic highlight border
-        painter.setBrush(QColor(16, 16, 16, 220))
-        border_color = QColor("#FFD700") if active_word_str else QColor("#0078D4")
-        painter.setPen(QPen(border_color, 2))
-        painter.drawRoundedRect(text_rect.adjusted(-10, -6, 10, 6), 8, 8)
+        fm = painter.fontMetrics()
+
+        lines_count = max(1, active_block_text.count("\n") + 1)
+        line_height = fm.lineSpacing()
+        card_h = max(70, line_height * lines_count + 20)
+        card_w = target_w - 36
+        card_x = x + 18
+        card_y = center_y + 115
+
+        card_rect = QRect(card_x, card_y, card_w, card_h)
+
+        # Background semi-transparent card with subtle gold/blue border
+        painter.setBrush(QColor(12, 12, 15, 235))
+        border_col = QColor("#FFD700") if self.blocks else QColor("#0078D4")
+        painter.setPen(QPen(border_col, 1.8))
+        painter.drawRoundedRect(card_rect, 8, 8)
+
+        # Draw 2-3 lines centered inside card with drop shadow
+        inner_rect = card_rect.adjusted(8, 8, -8, -8)
+        painter.setPen(QColor(0, 0, 0, 200))
+        painter.drawText(inner_rect.adjusted(1, 1, 1, 1), Qt.AlignCenter | Qt.TextWordWrap, active_block_text)
         painter.setPen(QColor("#FFFFFF"))
-        painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, active_subtitle)
+        painter.drawText(inner_rect, Qt.AlignCenter | Qt.TextWordWrap, active_block_text)
 
 
 # =====================================================================

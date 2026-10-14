@@ -108,12 +108,12 @@ class FFmpegCompositor:
         self,
         words_json_path: str,
         output_ass_path: str,
-        max_words_per_group: int = 3,
+        max_words_per_group: int = 8,
     ) -> str:
         """
         Parses faster-whisper word timestamps and writes a 1080x1920 kinetic .ass file.
-        - Groups words into snappy 2-3 word phrases.
-        - Highlights the currently spoken word in warm Crayon Gold (&H00D7FF&) with a 112% pop scale.
+        - Groups words into stable 2-3 line thought blocks (6-9 words per block).
+        - Highlights the currently spoken word in warm Crayon Gold (&H00D7FF&) while keeping 2-3 lines readable.
         - Positions captions at MarginV=440 (safe zone above TikTok Shop anchor links & captions).
         """
         words: List[Dict[str, Any]] = []
@@ -126,7 +126,6 @@ class FFmpegCompositor:
                 words = []
 
         # ASS Header configured for 1080x1920 vertical video
-        # Note: ASS colors use &HAABBGGRR& hex order
         # Primary: Off-white (&H00F0F6F8), Highlight override: Gold (&H0014D7FF), Outline: Charcoal (&H00141414)
         ass_lines = [
             "[Script Info]",
@@ -142,7 +141,7 @@ class FFmpegCompositor:
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
             "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
             "Alignment, MarginL, MarginR, MarginV, Encoding",
-            "Style: CrayonKinetic,Arial Rounded MT Bold,74,&H00F0F6F8,&H0014D7FF,&H00141414,&H80000000,"
+            "Style: CrayonKinetic,Arial Rounded MT Bold,68,&H00F0F6F8,&H0014D7FF,&H00141414,&H80000000,"
             "-1,0,0,0,100,100,1.5,0,1,6.5,3.0,2,70,70,440,1",
             "",
             "[Events]",
@@ -155,11 +154,11 @@ class FFmpegCompositor:
                 f.write("\n".join(ass_lines) + "\n")
             return output_ass_path
 
-        # Group words into punchy phrases (break on punctuation or max_words_per_group)
+        # Group words into stable 2-3 line thought blocks (6-9 words per block)
         groups: List[List[Dict[str, Any]]] = []
         current_group: List[Dict[str, Any]] = []
 
-        for w in words:
+        for idx, w in enumerate(words):
             w_text = self._escape_ass_text(w.get("word", ""))
             if not w_text:
                 continue
@@ -170,16 +169,31 @@ class FFmpegCompositor:
             }
             current_group.append(item)
 
-            ends_sentence = any(w_text.endswith(p) for p in (".", "!", "?", ",", ";", ":"))
-            if len(current_group) >= max_words_per_group or ends_sentence:
+            ends_sentence = any(w_text.endswith(p) for p in (".", "!", "?")) and len(current_group) >= 4
+            ends_clause = any(w_text.endswith(p) for p in (",", ";", ":", "—")) and len(current_group) >= 6
+            max_reached = len(current_group) >= max_words_per_group
+            is_last = (idx == len(words) - 1)
+
+            if ends_sentence or ends_clause or max_reached or is_last:
                 groups.append(current_group)
                 current_group = []
 
         if current_group:
             groups.append(current_group)
 
-        # Build gapless word-highlight dialogue events for each group
+        # Build gapless word-highlight dialogue events for each 2-3 line block
         for g_idx, group in enumerate(groups):
+            tw = len(group)
+            # Break indices to format into 2 or 3 balanced lines
+            break_indices = set()
+            if 5 <= tw <= 7:
+                break_indices.add((tw + 1) // 2)
+            elif tw >= 8:
+                p1 = (tw + 2) // 3
+                p2 = p1 + (tw - p1 + 1) // 2
+                break_indices.add(p1)
+                break_indices.add(p2)
+
             for w_idx, active_word in enumerate(group):
                 start_t = active_word["start"]
                 # Prevent micro-flickering between words inside the same phrase
@@ -200,6 +214,8 @@ class FFmpegCompositor:
 
                 formatted_tokens = []
                 for idx, token in enumerate(group):
+                    if idx in break_indices:
+                        formatted_tokens.append(r"\N")
                     upper_word = token["word"].upper()
                     if idx == w_idx:
                         # Active spoken word: Crayon Gold color + 114% scale pop
@@ -209,7 +225,7 @@ class FFmpegCompositor:
                     else:
                         formatted_tokens.append(upper_word)
 
-                line_text = " ".join(formatted_tokens)
+                line_text = " ".join(formatted_tokens).replace(r" \N ", r"\N").replace(r" \N", r"\N").replace(r"\N ", r"\N")
                 ass_lines.append(
                     f"Dialogue: 0,{start_str},{end_str},CrayonKinetic,,0,0,0,,{line_text}"
                 )
