@@ -65,6 +65,7 @@ class VisualEngineRouter:
         category: str = "STEM",
         script_text: Optional[str] = None,
         style_reference_path: Optional[str] = None,
+        enable_omni_video: bool = False,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> Dict:
         """
@@ -100,6 +101,7 @@ class VisualEngineRouter:
                 script_text=script_text,
                 visual_engine=self.visual_engine,
                 style_reference_path=style_reference_path,
+                enable_omni_video=enable_omni_video,
                 progress_callback=_cb,
             )
 

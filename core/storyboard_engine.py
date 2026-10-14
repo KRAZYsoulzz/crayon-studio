@@ -304,52 +304,72 @@ class AIStoryboardEngine:
         action_desc: str = "",
     ) -> str:
         """
-        Clean 3D-styled geometric emergency card:
-        - ZERO text, ZERO labels, ZERO prompt descriptions
-        - Bottom 38% (y >= 1180) 100% clean
-        - Soft gradients and modern 3D lighting
+        High-grade topic-adaptive procedural 3D cinematic canvas:
+        - Topic-adaptive gradient (Molten warmth, deep ocean, cosmic dark, sleek tech)
+        - Smooth volumetric radial illumination & vignette
+        - Ambient floating particle bokeh
+        - Strictly zero text, zero burned-in boxes
         """
         w, h = 1080, 1920
-        # Background: rich oceanic twilight gradient
+        act_lower = (action_desc + " " + category).lower()
+
+        # Topic-adaptive color schemes (BGR)
+        if any(k in act_lower for k in ["glass", "heat", "melt", "furnace", "fire", "lava", "sand", "warm", "sun"]):
+            # Molten Forge palette: deep charcoal into glowing amber/crimson core
+            c_top = (12, 10, 24)
+            c_mid = (25, 75, 190)
+            c_bot = (10, 20, 45)
+        elif any(k in act_lower for k in ["ocean", "water", "sea", "wave", "brine", "concrete", "coral"]):
+            # Deep Mediterranean oceanic palette: deep navy into turquoise
+            c_top = (48, 24, 14)
+            c_mid = (145, 105, 30)
+            c_bot = (30, 15, 8)
+        elif any(k in act_lower for k in ["space", "plane", "sky", "flight", "star", "air", "cosmos"]):
+            # Deep Cosmic Indigo palette
+            c_top = (38, 12, 18)
+            c_mid = (110, 45, 75)
+            c_bot = (20, 8, 12)
+        else:
+            # Sleek Modern Tech Slate & Cyan
+            c_top = (32, 24, 20)
+            c_mid = (130, 95, 35)
+            c_bot = (22, 16, 14)
+
         base = np.zeros((h, w, 3), dtype=np.uint8)
-        # Vertical gradient from deep navy (top) to warm twilight teal (middle)
         for y in range(h):
-            ratio = y / float(h)
-            r = int(14 + ratio * 20)
-            g = int(24 + ratio * 50)
-            b = int(48 + ratio * 70)
-            base[y, :] = (b, g, r)  # BGR
+            r = y / float(h)
+            if r < 0.55:
+                sub_r = r / 0.55
+                col = [int(c_top[i] * (1.0 - sub_r) + c_mid[i] * sub_r) for i in range(3)]
+            else:
+                sub_r = (r - 0.55) / 0.45
+                col = [int(c_mid[i] * (1.0 - sub_r) + c_bot[i] * sub_r) for i in range(3)]
+            base[y, :] = col
 
-        img = Image.fromarray(cv2.cvtColor(base, cv2.COLOR_BGR2RGB))
-        draw = ImageDraw.Draw(img)
+        # Draw soft volumetric radial spotlight in upper-middle (cx=540, cy=720)
+        cx, cy = w // 2, 720
+        y_grid, x_grid = np.ogrid[:h, :w]
+        dist_sq = (x_grid - cx) ** 2 + (y_grid - cy) ** 2
+        spotlight = np.clip(1.0 - np.sqrt(dist_sq) / 580.0, 0.0, 1.0)
+        spotlight = (spotlight ** 2.2) * 90.0
 
-        # Draw soft 3D stylized central subject in upper 60% of frame (cx=540, cy=680)
-        cx, cy = w // 2, 680
+        for ch in range(3):
+            channel = base[:, :, ch].astype(np.float32) + spotlight * (c_mid[ch] / 180.0)
+            base[:, :, ch] = np.clip(channel, 0, 255).astype(np.uint8)
 
-        # Draw stylized 3D layered blocks (seawall cutaway)
-        colors = [(65, 85, 120), (80, 105, 145), (100, 130, 175), (45, 135, 195)]
-        for i, col in enumerate(colors):
-            bx = cx - 280 + i * 40
-            by = cy - 240 + i * 50
-            draw.rounded_rectangle([(bx, by), (bx + 480, by + 260)], radius=32, fill=col, outline=(220, 240, 255), width=3)
+        # Ambient floating particle bokeh
+        np.random.seed(42 + scene_idx * 17)
+        for _ in range(36):
+            px = np.random.randint(40, w - 40)
+            py = np.random.randint(60, 1200)
+            rad = np.random.randint(3, 14)
+            cv2.circle(base, (px, py), rad, (230, 245, 255), -1, lineType=cv2.LINE_AA)
 
-        # Glowing emerald crystalline cluster in center
-        for a in range(8):
-            ang = a * (math.pi / 4.0)
-            px = int(cx + 120 * math.cos(ang))
-            py = int(cy + 40 + 70 * math.sin(ang))
-            draw.polygon([
-                (px, py - 40),
-                (px + 30, py),
-                (px, py + 40),
-                (px - 30, py),
-            ], fill=(30, 215, 140), outline=(230, 255, 240))
-
-        # Soft volumetric lighting glow
-        img = img.filter(ImageFilter.SMOOTH_MORE)
+        # Soft blur for cinematic bloom
+        base = cv2.GaussianBlur(base, (15, 15), 0)
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        img.save(output_path, "PNG")
+        cv2.imwrite(output_path, base)
         return output_path
 
     def generate_ai_video_clip(
@@ -548,22 +568,23 @@ class AIStoryboardEngine:
                 if progress_callback:
                     progress_callback(f"[AI Storyboard] Tier 1 Gemini Image skipped ({e}). Using Tier 2 Engine...")
 
-        # Tier 2: Pollinations Engine (Requests 1080x1980 and crops bottom 60px to strip watermark)
-        models_to_try = [None, "flux", "turbo"]
-        for m in models_to_try:
+        # Tier 2: Free Public High-Speed AI Image Endpoints (Pollinations & Airforce)
+        clean_p = re.sub(r'[^a-zA-Z0-9 ,.-]', '', prompt)[:220].strip()
+        encoded = urllib.parse.quote(clean_p)
+        free_endpoints = [
+            (
+                "Pollinations AI",
+                f"https://image.pollinations.ai/prompt/{encoded}?width=720&height=1280&nologo=true&seed={seed}",
+            ),
+            (
+                "Airforce AI",
+                f"https://api.airforce/v1/imaging?prompt={encoded}",
+            ),
+        ]
+        for ep_name, url in free_endpoints:
             try:
-                time.sleep(1.0)
                 if progress_callback:
-                    m_label = m or "standard"
-                    progress_callback(f"[AI Storyboard] Generating Scene {scene_idx + 1} with {m_label.upper()} engine...")
-
-                clean_p = re.sub(r'[^a-zA-Z0-9 ,.-]', '', prompt)[:260]
-                encoded = urllib.parse.quote(clean_p)
-
-                if m:
-                    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1980&nologo=true&model={m}&seed={seed}"
-                else:
-                    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1980&nologo=true&seed={seed}"
+                    progress_callback(f"[AI Storyboard] Generating Scene {scene_idx + 1} with {ep_name}...")
 
                 req = urllib.request.Request(
                     url,
@@ -572,22 +593,20 @@ class AIStoryboardEngine:
                         "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
                     },
                 )
-                with urllib.request.urlopen(req, timeout=30) as resp:
+                with urllib.request.urlopen(req, timeout=25) as resp:
                     data = resp.read()
                     if len(data) > 10000:
                         with open(output_path, "wb") as f:
                             f.write(data)
 
                         with Image.open(output_path) as im:
-                            if im.height >= 1980:
-                                im = im.crop((0, 0, 1080, 1920))
-                            elif im.size != (1080, 1920):
+                            if im.size != (1080, 1920):
                                 im = im.resize((1080, 1920), Image.Resampling.LANCZOS)
-                            im.save(output_path)
+                                im.save(output_path)
                         return output_path
             except Exception as ex:
                 if progress_callback:
-                    progress_callback(f"[Note] Pollinations {m or 'standard'} retry: {ex}")
+                    progress_callback(f"[Note] {ep_name} retry note: {ex}")
 
         # Tier 3: Clean 3D Vector Emergency Card (Zero Text, Bottom 38% empty)
         if progress_callback:
@@ -863,6 +882,7 @@ class AIStoryboardEngine:
         script_text: Optional[str] = None,
         visual_engine: str = "2D_Crayon",
         style_reference_path: Optional[str] = None,
+        enable_omni_video: bool = False,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> str:
         """
@@ -1019,9 +1039,9 @@ class AIStoryboardEngine:
                 except Exception:
                     pass
 
-                # Generate dedicated standalone Gemini Omni Flash video for this scene cut
+                # Generate dedicated standalone Gemini Omni Flash video ONLY if explicitly enabled
                 omni_clip_target = os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.mp4")
-                if self.gemini_api_key:
+                if enable_omni_video and self.gemini_api_key:
                     video_prompt = sc.get("omni_prompt", sc["prompt"])
                     ok, _ = self.generate_ai_video_clip(
                         scene_prompt=video_prompt,
@@ -1033,6 +1053,8 @@ class AIStoryboardEngine:
                     )
                     if ok:
                         sc["video_clip_path"] = omni_clip_target
+                elif not enable_omni_video and progress_callback:
+                    progress_callback(f"[2.5D Motion] Scene {idx_1based}: Using high-speed 2.5D cinematic keyframe animation.")
 
         # Save metadata
         with open(os.path.join(project_dir, "storyboard.json"), "w", encoding="utf-8") as f:

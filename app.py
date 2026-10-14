@@ -18,7 +18,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import QDate, QRect, QSize, Qt, QThread, QTime, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -410,8 +410,8 @@ class PipelineWorker(QThread):
         script_text: str,
         duration_target: int,
         tiktok_product: str,
-        voice: str = "en-US-AndrewMultilingualNeural",
-        speed: float = 1.05,
+        voice: str = "en-US-GuyNeural",
+        speed: float = 1.00,
         visual_engine: str = "2D_Crayon",
     ):
         super().__init__()
@@ -535,6 +535,7 @@ class BlenderRenderWorker(QThread):
         script_text: str = "",
         visual_engine: str = "2D_Crayon",
         style_reference_path: Optional[str] = None,
+        enable_omni_video: bool = False,
     ):
         super().__init__()
         self.project_slug = project_slug
@@ -544,6 +545,7 @@ class BlenderRenderWorker(QThread):
         self.script_text = script_text
         self.visual_engine = visual_engine
         self.style_reference_path = style_reference_path
+        self.enable_omni_video = enable_omni_video
 
     def run(self):
         try:
@@ -576,6 +578,7 @@ class BlenderRenderWorker(QThread):
                 category=self.category,
                 script_text=self.script_text,
                 style_reference_path=self.style_reference_path,
+                enable_omni_video=self.enable_omni_video,
                 progress_callback=lambda msg: self.log_message.emit(msg),
             )
 
@@ -1144,6 +1147,36 @@ class CrayonStudioApp(QMainWindow):
         style_layout.addWidget(self.btn_browse_style_ref)
         mc_layout.addLayout(style_layout, 3, 1, 1, 3)
 
+        # Row 4: Narrator Voice & Pacing
+        mc_layout.addWidget(QLabel("Narrator Voice:"), 4, 0)
+        self.tab2_combo_voice = QComboBox()
+        self.tab2_combo_voice.addItem("🎙️ en-US-GuyNeural (Smooth Documentary Narrator - Recommended)", "en-US-GuyNeural")
+        self.tab2_combo_voice.addItem("🎙️ en-US-ChristopherNeural (Deep Cinematic Baritone)", "en-US-ChristopherNeural")
+        self.tab2_combo_voice.addItem("🎙️ en-US-AndrewMultilingualNeural (Conversational Storyteller)", "en-US-AndrewMultilingualNeural")
+        self.tab2_combo_voice.addItem("🎙️ en-US-BrianMultilingualNeural (Crisp STEM Explainer)", "en-US-BrianMultilingualNeural")
+        self.tab2_combo_voice.addItem("🎙️ en-US-AvaMultilingualNeural (Expressive Female Narrator)", "en-US-AvaMultilingualNeural")
+        self.tab2_combo_voice.addItem("🎙️ en-US-JennyNeural (Warm Female Narrator)", "en-US-JennyNeural")
+        mc_layout.addWidget(self.tab2_combo_voice, 4, 1)
+
+        mc_layout.addWidget(QLabel("Speech Speed:"), 4, 2)
+        self.tab2_spin_speed = QDoubleSpinBox()
+        self.tab2_spin_speed.setRange(0.8, 1.4)
+        self.tab2_spin_speed.setSingleStep(0.05)
+        self.tab2_spin_speed.setValue(1.00)
+        self.tab2_spin_speed.setSuffix("x (1.00 = Natural Human Flow)")
+        mc_layout.addWidget(self.tab2_spin_speed, 4, 3)
+
+        # Row 5: AI Video Generation Mode Checkbox
+        mc_layout.addWidget(QLabel("AI Video Mode:"), 5, 0)
+        self.chk_omni_video = QCheckBox("Generate Full Generative AI Video via Gemini Omni / Veo (~$15-$20 API credits)")
+        self.chk_omni_video.setChecked(False)
+        self.chk_omni_video.setStyleSheet("color: #FFB74D; font-weight: bold;")
+        self.chk_omni_video.setToolTip(
+            "Unchecked (Recommended): High-speed 2.5D Cinematic Animation (~$0.00-$0.10, unlimited, zero credit drain).\n"
+            "Checked: Generates raw video with Gemini Omni Flash / Veo (~$15-$20/video)."
+        )
+        mc_layout.addWidget(self.chk_omni_video, 5, 1, 1, 3)
+
         layout.addWidget(meta_card)
 
         # Middle Card: Script Editor
@@ -1596,10 +1629,12 @@ class CrayonStudioApp(QMainWindow):
         sc_layout.addWidget(QLabel("Narrator Voice:"), 4, 0)
         self.combo_voice = QComboBox()
         self.combo_voice.addItems([
+            "en-US-GuyNeural",
+            "en-US-ChristopherNeural",
             "en-US-AndrewMultilingualNeural",
             "en-US-BrianMultilingualNeural",
             "en-US-AvaMultilingualNeural",
-            "en-US-ChristopherNeural",
+            "en-US-JennyNeural",
             "af_heart",
             "am_adam",
         ])
@@ -1610,8 +1645,8 @@ class CrayonStudioApp(QMainWindow):
         self.spin_speed = QDoubleSpinBox()
         self.spin_speed.setRange(0.8, 1.5)
         self.spin_speed.setSingleStep(0.05)
-        self.spin_speed.setValue(1.05)
-        self.spin_speed.setSuffix("x (1.05 = viral pacing)")
+        self.spin_speed.setValue(1.00)
+        self.spin_speed.setSuffix("x (1.00 = Natural Human Flow)")
         sc_layout.addWidget(self.spin_speed, 5, 1)
 
         # Default Target Duration
@@ -2125,8 +2160,20 @@ class CrayonStudioApp(QMainWindow):
             f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 🚀 Initiating Pipeline Worker for: '{title}'..."
         )
 
-        voice = self.combo_voice.currentText()
-        speed = self.spin_speed.value()
+        if hasattr(self, "tab2_combo_voice") and self.tab2_combo_voice.currentData():
+            voice = self.tab2_combo_voice.currentData()
+        elif hasattr(self, "combo_voice"):
+            voice = self.combo_voice.currentText()
+        else:
+            voice = "en-US-GuyNeural"
+
+        if hasattr(self, "tab2_spin_speed"):
+            speed = self.tab2_spin_speed.value()
+        elif hasattr(self, "spin_speed"):
+            speed = self.spin_speed.value()
+        else:
+            speed = 1.00
+
         v_engine = self.combo_engine.currentData() or "2D_Crayon"
 
         self.pipeline_thread = PipelineWorker(
@@ -2228,6 +2275,7 @@ class CrayonStudioApp(QMainWindow):
         )
 
         style_ref = self.input_style_ref.text().strip() or self.config.get("style_reference_path", "")
+        enable_omni = getattr(self, "chk_omni_video", None) is not None and self.chk_omni_video.isChecked()
         self.render_worker = BlenderRenderWorker(
             project_slug=slug,
             category=self.combo_category.currentText(),
@@ -2236,6 +2284,7 @@ class CrayonStudioApp(QMainWindow):
             script_text=self.text_script.toPlainText().strip(),
             visual_engine=v_engine,
             style_reference_path=style_ref,
+            enable_omni_video=enable_omni,
         )
         self.render_worker.log_message.connect(self._on_pipeline_log)
         self.render_worker.progress_val.connect(self.progress_bar.setValue)
@@ -2722,12 +2771,21 @@ class CrayonStudioApp(QMainWindow):
         self.input_blender_path.setText(self.config.get("blender_path", ""))
         self.input_ffmpeg_path.setText(self.config.get("ffmpeg_path", ""))
 
-        voice = self.config.get("default_voice", "af_heart")
+        voice = self.config.get("default_voice", "en-US-GuyNeural")
         v_idx = self.combo_voice.findText(voice)
         if v_idx >= 0:
             self.combo_voice.setCurrentIndex(v_idx)
 
-        self.spin_speed.setValue(float(self.config.get("speech_speed", 1.05)))
+        if hasattr(self, "tab2_combo_voice"):
+            t2_idx = self.tab2_combo_voice.findData(voice)
+            if t2_idx >= 0:
+                self.tab2_combo_voice.setCurrentIndex(t2_idx)
+
+        speed_val = float(self.config.get("speech_speed", 1.00))
+        self.spin_speed.setValue(speed_val)
+        if hasattr(self, "tab2_spin_speed"):
+            self.tab2_spin_speed.setValue(speed_val)
+
         self.spin_default_duration.setValue(int(self.config.get("target_duration", 65)))
         self.chk_dry_run.setChecked(bool(self.config.get("dry_run_mode", True)))
         self.input_yt_key.setText(self.config.get("youtube_api_key", ""))
