@@ -24,6 +24,59 @@ except ImportError:
     logger.info("Kokoro package not installed. Fallback audio synthesis will be used.")
 
 
+def _trim_long_silences(
+    audio_array: np.ndarray,
+    sr: int = SAMPLE_RATE,
+    max_silence_sec: float = 0.25,
+) -> np.ndarray:
+    """Compress dead pauses in audio_array longer than max_silence_sec down to max_silence_sec.
+
+    Preserves natural cadence while ensuring punchy, high-retention short-form pacing.
+    """
+    if len(audio_array) == 0:
+        return audio_array
+
+    max_silence_len = int(sr * max_silence_sec)
+    frame_len = int(sr * 0.02)  # 20ms frames
+    if frame_len <= 0 or len(audio_array) < frame_len:
+        return audio_array
+
+    num_frames = len(audio_array) // frame_len
+    if num_frames == 0:
+        return audio_array
+
+    reshaped = audio_array[: num_frames * frame_len].reshape(num_frames, frame_len)
+    rms = np.sqrt(np.mean(reshaped ** 2, axis=1))
+
+    peak = np.max(np.abs(audio_array))
+    if peak <= 1e-6:
+        return audio_array[:max_silence_len]
+
+    silence_thresh = max(0.015 * peak, 0.002)
+    is_silent = rms < silence_thresh
+
+    output_chunks = []
+    current_run_silent = bool(is_silent[0])
+    run_start_frame = 0
+
+    for i in range(1, num_frames):
+        if is_silent[i] != current_run_silent:
+            run_samples = audio_array[run_start_frame * frame_len : i * frame_len]
+            if current_run_silent and len(run_samples) > max_silence_len:
+                run_samples = run_samples[:max_silence_len]
+            output_chunks.append(run_samples)
+            current_run_silent = bool(is_silent[i])
+            run_start_frame = i
+
+    last_samples = audio_array[run_start_frame * frame_len :]
+    if current_run_silent and len(last_samples) > max_silence_len:
+        last_samples = last_samples[:max_silence_len]
+    output_chunks.append(last_samples)
+
+    trimmed_audio = np.concatenate(output_chunks).astype(np.float32)
+    return trimmed_audio
+
+
 def _generate_synthetic_speech_placeholder(
     text: str,
     output_path: str,
@@ -71,6 +124,7 @@ def _generate_synthetic_speech_placeholder(
             audio_segments.append(silence)
 
     full_audio = np.concatenate(audio_segments).astype(np.float32)
+    full_audio = _trim_long_silences(full_audio, sample_rate, max_silence_sec=0.25)
     # Normalize peak to -1 dBFS
     peak = np.max(np.abs(full_audio))
     if peak > 0:
@@ -123,6 +177,7 @@ def generate_voiceover(
                 raise RuntimeError("Kokoro generator produced no audio chunks.")
 
             full_audio = np.concatenate(chunks)
+            full_audio = _trim_long_silences(full_audio, SAMPLE_RATE, max_silence_sec=0.25)
             sf.write(output_path, full_audio, SAMPLE_RATE, subtype="PCM_16")
             total_duration = len(full_audio) / SAMPLE_RATE
             logger.info("Kokoro synthesis complete: %s (%.2fs)", output_path, total_duration)

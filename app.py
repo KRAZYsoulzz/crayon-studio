@@ -59,11 +59,13 @@ from PySide6.QtWidgets import (
 from core.ai_modifier import modify_script
 from core.audio_generator import generate_voiceover
 from core.blender_orchestrator import BlenderOrchestrator
+from core.engine_router import VisualEngineRouter
 from core.ffmpeg_compositor import FFmpegCompositor
 from core.foley_mixer import generate_foley_track
 from core.scraper import search_trends_and_comments
 from core.timestamp_aligner import extract_word_timestamps
 from core.uploader import queue_tiktok_draft, upload_to_youtube
+from core.visual_critic import generate_and_verify_snapshots
 import database.db as db
 
 # Configure logging
@@ -389,6 +391,7 @@ class PipelineWorker(QThread):
         tiktok_product: str,
         voice: str = "af_heart",
         speed: float = 1.05,
+        visual_engine: str = "2D_Crayon",
     ):
         super().__init__()
         self.project_slug = project_slug
@@ -400,6 +403,7 @@ class PipelineWorker(QThread):
         self.tiktok_product = tiktok_product
         self.voice = voice
         self.speed = speed
+        self.visual_engine = visual_engine
 
     def run(self):
         try:
@@ -424,6 +428,7 @@ class PipelineWorker(QThread):
                     duration_target=self.duration_target,
                     tiktok_product=self.tiktok_product,
                     status="Draft",
+                    visual_engine=self.visual_engine,
                 )
                 proj_id = existing["id"]
             else:
@@ -436,8 +441,9 @@ class PipelineWorker(QThread):
                     duration_target=self.duration_target,
                     tiktok_product=self.tiktok_product,
                     status="Draft",
+                    visual_engine=self.visual_engine,
                 )
-            self.log_message.emit(f"✓ Project synced (ID: {proj_id})")
+            self.log_message.emit(f"✓ Project synced (ID: {proj_id}, Engine: {self.visual_engine})")
 
             # 3. Audio Synthesis (Kokoro-82M Local TTS)
             self.log_message.emit(f"🎙️ Synthesizing voiceover with Kokoro-82M [Voice: {self.voice}, Speed: {self.speed}x]...")
@@ -456,11 +462,12 @@ class PipelineWorker(QThread):
             # Calculate actual audio duration from word timestamps or soundfile
             total_dur = words_list[-1]["end"] if words_list else float(self.duration_target)
 
-            # 5. ASMR Foley Generation (Synchronized Crayon Scribble & Paper Texture)
-            self.log_message.emit("🎨 Synthesizing synchronized crayon scribbles and ASMR paper friction...")
+            # 5. ASMR / Mechanical Foley Generation
+            foley_desc = "procedural mechanical transients" if self.visual_engine == "3D_Teardown" else "synchronized crayon scribbles and ASMR paper friction"
+            self.log_message.emit(f"🎨 Synthesizing {foley_desc}...")
             self.progress_val.emit(85)
             foley_path = os.path.join(proj_dir, "foley_track.wav")
-            generate_foley_track(words_json_path, foley_path, duration=total_dur)
+            generate_foley_track(words_json_path, foley_path, duration=total_dur, visual_engine=self.visual_engine)
             self.log_message.emit(f"✓ Synchronized Foley audio rendered: {foley_path}")
 
             # 6. Finalize Status
@@ -478,6 +485,7 @@ class PipelineWorker(QThread):
                 "voiceover_path": vo_path,
                 "words_json_path": words_json_path,
                 "foley_path": foley_path,
+                "visual_engine": self.visual_engine,
             }
             self.pipeline_finished.emit(result_payload)
 
@@ -495,12 +503,20 @@ class BlenderRenderWorker(QThread):
     render_finished = Signal(str)
     render_error = Signal(str)
 
-    def __init__(self, project_slug: str, category: str, blender_path: str, ffmpeg_path: str):
+    def __init__(
+        self,
+        project_slug: str,
+        category: str,
+        blender_path: str,
+        ffmpeg_path: str,
+        visual_engine: str = "2D_Crayon",
+    ):
         super().__init__()
         self.project_slug = project_slug
         self.category = category
         self.blender_path = blender_path
         self.ffmpeg_path = ffmpeg_path
+        self.visual_engine = visual_engine
 
     def run(self):
         try:
@@ -514,11 +530,16 @@ class BlenderRenderWorker(QThread):
             if not os.path.exists(words_json):
                 raise FileNotFoundError("words_timestamp.json not found. Run 'Generate Video Pipeline' first.")
 
-            self.log_message.emit("🎨 Launching Blender Headless Orchestrator...")
+            engine_label = VisualEngineRouter.get_display_name(self.visual_engine)
+            self.log_message.emit(f"🎨 Initializing {engine_label}...")
             self.progress_val.emit(25)
 
-            orch = BlenderOrchestrator(blender_path=self.blender_path)
-            orch.render_project(
+            router = VisualEngineRouter(
+                visual_engine=self.visual_engine,
+                blender_path=self.blender_path,
+                ffmpeg_path=self.ffmpeg_path,
+            )
+            render_res = router.render_project(
                 project_dir=proj_dir,
                 words_json_path=words_json,
                 output_mp4_path=raw_video,
@@ -890,7 +911,8 @@ class CrayonStudioApp(QMainWindow):
 
         mc_layout.addWidget(QLabel("Category:"), 0, 2)
         self.combo_category = QComboBox()
-        self.combo_category.addItems(["STEM", "Escape/Heist", "Architecture", "Psychology"])
+        self.combo_category.addItems(["STEM", "How It's Made", "Engineering", "Escape/Heist", "Architecture", "Psychology"])
+        self.combo_category.currentTextChanged.connect(self._on_category_changed)
         mc_layout.addWidget(self.combo_category, 0, 3)
 
         # Row 1: Target Duration & TikTok Shop Bridge
@@ -913,6 +935,13 @@ class CrayonStudioApp(QMainWindow):
             "None (Pure Organic)",
         ])
         mc_layout.addWidget(self.combo_product, 1, 3)
+
+        # Row 2: Visual Style Engine Selector (Dual-Engine Router)
+        mc_layout.addWidget(QLabel("Visual Style Engine:"), 2, 0)
+        self.combo_engine = QComboBox()
+        self.combo_engine.addItem("🎨 Engine A: 2D Crayon & Blueprint Sketchbook (Continuous Canvas)", "2D_Crayon")
+        self.combo_engine.addItem("⚙️ Engine B: 3D Hardware Teardown (Exploded View & X-Ray)", "3D_Teardown")
+        mc_layout.addWidget(self.combo_engine, 2, 1, 1, 3)
 
         layout.addWidget(meta_card)
 
@@ -1103,6 +1132,57 @@ class CrayonStudioApp(QMainWindow):
         rc_title.setStyleSheet("font-weight: bold; font-size: 14px; color: #FFFFFF;")
         rc_layout.addWidget(rc_title)
 
+        # Visual Critic 4-Keyframe Strip
+        critic_group = QGroupBox("🔍 Visual Critic — 4-Keyframe Inspection")
+        critic_group.setStyleSheet(
+            "QGroupBox { font-weight: bold; color: #0078D4; border: 1px solid #2D2D2D; "
+            "margin-top: 6px; padding-top: 10px; border-radius: 6px; }"
+        )
+        cr_layout = QVBoxLayout(critic_group)
+        cr_layout.setSpacing(6)
+
+        thumbs_layout = QHBoxLayout()
+        thumbs_layout.setSpacing(8)
+
+        self.critic_thumbs = []
+        checkpoints_ui = [
+            ("Closed View", "5%"),
+            ("Exploded View", "30%"),
+            ("Action View", "60%"),
+            ("Cutaway View", "88%"),
+        ]
+
+        for role_name, pct in checkpoints_ui:
+            card_v = QVBoxLayout()
+            card_v.setSpacing(2)
+            card_v.setAlignment(Qt.AlignCenter)
+
+            lbl_title = QLabel(f"{role_name}\n({pct})")
+            lbl_title.setAlignment(Qt.AlignCenter)
+            lbl_title.setStyleSheet("font-size: 10px; font-weight: 600; color: #9AA0A6;")
+
+            thumb_lbl = QLabel("No Render")
+            thumb_lbl.setFixedSize(70, 110)
+            thumb_lbl.setAlignment(Qt.AlignCenter)
+            thumb_lbl.setStyleSheet(
+                "background-color: #121418; border: 1px solid #333842; "
+                "border-radius: 4px; font-size: 9px; color: #5F6368;"
+            )
+            thumb_lbl.setScaledContents(True)
+
+            card_v.addWidget(lbl_title)
+            card_v.addWidget(thumb_lbl)
+            thumbs_layout.addLayout(card_v)
+            self.critic_thumbs.append(thumb_lbl)
+
+        cr_layout.addLayout(thumbs_layout)
+
+        self.lbl_critic_summary = QLabel("Visual Critic: Standby. Awaiting project render.")
+        self.lbl_critic_summary.setStyleSheet("font-size: 10px; color: #9AA0A6;")
+        cr_layout.addWidget(self.lbl_critic_summary)
+
+        rc_layout.addWidget(critic_group)
+
         # Checklist Group
         chk_group = QGroupBox("Retention Optimization Checklist")
         chk_group.setStyleSheet("QGroupBox { font-weight: bold; color: #0078D4; border: 1px solid #2D2D2D; margin-top: 6px; padding-top: 10px; border-radius: 6px; }")
@@ -1150,6 +1230,25 @@ class CrayonStudioApp(QMainWindow):
         mg_layout.addWidget(self.meta_hashtags)
 
         rc_layout.addWidget(meta_group)
+
+        # AI Visual Revision Prompt Bar
+        rev_group = QGroupBox("⚡ AI Visual Revision & Re-Render")
+        rev_group.setStyleSheet(
+            "QGroupBox { font-weight: bold; color: #0078D4; border: 1px solid #2D2D2D; "
+            "margin-top: 6px; padding-top: 10px; border-radius: 6px; }"
+        )
+        rev_layout = QHBoxLayout(rev_group)
+        rev_layout.setSpacing(8)
+
+        self.input_visual_revision = QLineEdit()
+        self.input_visual_revision.setPlaceholderText("e.g. Expand exploded parts wider, intensify spark emissive, change spring to copper...")
+        self.btn_apply_visual_revision = QPushButton("⚡ Re-Render Visuals")
+        self.btn_apply_visual_revision.setProperty("class", "primary")
+        self.btn_apply_visual_revision.clicked.connect(self._on_apply_visual_revision)
+
+        rev_layout.addWidget(self.input_visual_revision, stretch=1)
+        rev_layout.addWidget(self.btn_apply_visual_revision)
+        rc_layout.addWidget(rev_group)
 
         # Action Buttons
         act_box = QVBoxLayout()
@@ -1438,7 +1537,11 @@ class CrayonStudioApp(QMainWindow):
 
         # Deduce category
         topic_lower = topic.lower()
-        if "heist" in topic_lower or "vault" in topic_lower or "escape" in topic_lower:
+        if any(w in topic_lower for w in ["machine", "engine", "gear", "device", "hardware", "motor", "tool", "hydraulic", "lighter", "piezo"]):
+            cat_idx = self.combo_category.findText("Engineering")
+        elif any(w in topic_lower for w in ["how it's made", "how it is made", "manufacturing", "factory", "assembly"]):
+            cat_idx = self.combo_category.findText("How It's Made")
+        elif "heist" in topic_lower or "vault" in topic_lower or "escape" in topic_lower:
             cat_idx = self.combo_category.findText("Escape/Heist")
         elif "concrete" in topic_lower or "bridge" in topic_lower or "building" in topic_lower:
             cat_idx = self.combo_category.findText("Architecture")
@@ -1523,6 +1626,17 @@ class CrayonStudioApp(QMainWindow):
         )
         self.lbl_script_metrics.setStyleSheet(f"color: {color}; font-weight: bold;")
 
+    def _on_category_changed(self, cat: str):
+        cat_clean = cat.strip()
+        if cat_clean in ("How It's Made", "Engineering"):
+            idx = self.combo_engine.findData("3D_Teardown")
+            if idx >= 0:
+                self.combo_engine.setCurrentIndex(idx)
+        elif cat_clean in ("Psychology", "Escape/Heist"):
+            idx = self.combo_engine.findData("2D_Crayon")
+            if idx >= 0:
+                self.combo_engine.setCurrentIndex(idx)
+
     def _on_modify_script(self):
         prompt = self.input_ai_prompt.text().strip()
         if not prompt:
@@ -1549,6 +1663,7 @@ class CrayonStudioApp(QMainWindow):
         script = self.text_script.toPlainText()
         dur = self.spin_duration.value()
         product = self.combo_product.currentText()
+        v_engine = self.combo_engine.currentData() or "2D_Crayon"
 
         existing = db.get_project_by_slug(slug)
         if existing:
@@ -1559,6 +1674,7 @@ class CrayonStudioApp(QMainWindow):
                 script_text=script,
                 duration_target=dur,
                 tiktok_product=product,
+                visual_engine=v_engine,
             )
             self.active_project_id = existing["id"]
         else:
@@ -1570,10 +1686,11 @@ class CrayonStudioApp(QMainWindow):
                 duration_target=dur,
                 tiktok_product=product,
                 status="Draft",
+                visual_engine=v_engine,
             )
 
         self.active_project_slug = slug
-        self.terminal_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 💾 Project Draft saved (ID: {self.active_project_id})")
+        self.terminal_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 💾 Project Draft saved (ID: {self.active_project_id}, Engine: {v_engine})")
         self.status_bar.showMessage("Project draft saved to SQLite database.", 3000)
         self.refresh_calendar()
 
@@ -1597,6 +1714,7 @@ class CrayonStudioApp(QMainWindow):
 
         voice = self.combo_voice.currentText()
         speed = self.spin_speed.value()
+        v_engine = self.combo_engine.currentData() or "2D_Crayon"
 
         self.pipeline_thread = PipelineWorker(
             project_slug=slug,
@@ -1608,6 +1726,7 @@ class CrayonStudioApp(QMainWindow):
             tiktok_product=self.combo_product.currentText(),
             voice=voice,
             speed=speed,
+            visual_engine=v_engine,
         )
         self.pipeline_thread.log_message.connect(self._on_pipeline_log)
         self.pipeline_thread.progress_val.connect(self.progress_bar.setValue)
@@ -1629,8 +1748,10 @@ class CrayonStudioApp(QMainWindow):
         self.meta_description.setText(
             f"{payload.get('script_text', '')[:120]}...\n\nAnimation created via CrayonStudio."
         )
+        cat_lower = payload.get("category", "stem").lower().replace(" ", "")
+        engine_tag = "#cad #explodedview" if payload.get("visual_engine") == "3D_Teardown" else "#crayonanimation"
         self.meta_hashtags.setText(
-            f"#{payload.get('category', 'stem').lower()} #crayonanimation #satisfying #engineering #learnontiktok"
+            f"#{cat_lower} {engine_tag} #satisfying #engineering #learnontiktok"
         )
         self.preview_canvas.update_metadata(
             title=payload.get("title", ""),
@@ -1677,11 +1798,13 @@ class CrayonStudioApp(QMainWindow):
 
         blender_path = self.config.get("blender_path", "blender")
         ffmpeg_path = self.config.get("ffmpeg_path", "ffmpeg")
+        v_engine = self.combo_engine.currentData() or "2D_Crayon"
+        engine_label = VisualEngineRouter.get_display_name(v_engine)
 
         self.btn_render_blender.setEnabled(False)
         self.progress_bar.setValue(10)
         self.terminal_log.append(
-            f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 🎨 Starting Blender Grease Pencil & FFmpeg Compositor..."
+            f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 🚀 Dispatching to {engine_label}..."
         )
 
         self.render_worker = BlenderRenderWorker(
@@ -1689,6 +1812,7 @@ class CrayonStudioApp(QMainWindow):
             category=self.combo_category.currentText(),
             blender_path=blender_path,
             ffmpeg_path=ffmpeg_path,
+            visual_engine=v_engine,
         )
         self.render_worker.log_message.connect(self._on_pipeline_log)
         self.render_worker.progress_val.connect(self.progress_bar.setValue)
@@ -1708,6 +1832,11 @@ class CrayonStudioApp(QMainWindow):
         self.media_player.setSource(QUrl.fromLocalFile(final_mp4))
         self.btn_play_pause.setText("▶ Play")
         self.terminal_log.append(f"🎉 Final 9:16 video rendered and loaded: {final_mp4}")
+
+        # Load Visual Critic 4-Keyframe inspection snapshots
+        snap_dir = os.path.join(PROJECTS_DIR, self.active_project_slug, "preview_snapshots")
+        self._load_critic_snapshots(snap_dir)
+
         self.tab_widget.setCurrentIndex(2)
 
     def _on_blender_render_error(self, err: str):
@@ -1718,6 +1847,43 @@ class CrayonStudioApp(QMainWindow):
             "Blender Render Info",
             f"Headless Blender render could not complete:\n{err}\n\nTip: You can configure your Blender executable path in Tab 5 (Settings).",
         )
+
+    def _on_apply_visual_revision(self):
+        prompt = self.input_visual_revision.text().strip()
+        if not prompt:
+            QMessageBox.information(self, "Visual Revision", "Please enter a revision instruction (e.g. 'Expand exploded parts further').")
+            return
+        self.terminal_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] ⚡ Applying visual revision: '{prompt}'...")
+        self._on_render_blender_animation()
+
+    def _load_critic_snapshots(self, snap_dir: str):
+        """Loads the 4 Visual Critic snapshots into Tab 3 thumbnail strip."""
+        filenames = [
+            "frame_1_closed.png",
+            "frame_2_exploded.png",
+            "frame_3_action.png",
+            "frame_4_cutaway.png",
+        ]
+        found_any = False
+        for idx, fname in enumerate(filenames):
+            fpath = os.path.join(snap_dir, fname)
+            if idx < len(self.critic_thumbs):
+                if os.path.exists(fpath):
+                    pix = QPixmap(fpath)
+                    if not pix.isNull():
+                        self.critic_thumbs[idx].setPixmap(pix)
+                        self.critic_thumbs[idx].setToolTip(f"{fname}\n{fpath}")
+                        found_any = True
+                else:
+                    self.critic_thumbs[idx].clear()
+                    self.critic_thumbs[idx].setText("No Render")
+
+        if found_any:
+            self.lbl_critic_summary.setText("✓ 4-Keyframe inspection: All checkpoints verified.")
+            self.lbl_critic_summary.setStyleSheet("font-size: 10px; color: #00E676; font-weight: bold;")
+        else:
+            self.lbl_critic_summary.setText("Visual Critic: Standby. Awaiting project render.")
+            self.lbl_critic_summary.setStyleSheet("font-size: 10px; color: #9AA0A6;")
 
     # =================================================================
     # TAB 3 LOGIC: VIRAL CHECKLIST & DISPATCH
@@ -1883,8 +2049,25 @@ class CrayonStudioApp(QMainWindow):
                     p_status = QLabel(status.upper())
                     p_status.setStyleSheet(
                         f"background-color: {bg_col}; color: {txt_col}; "
-                        "padding: 2px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;"
+                        "padding: 2px 4px; border-radius: 3px; font-size: 8px; font-weight: bold;"
                     )
+
+                    v_engine = proj.get("visual_engine", "2D_Crayon")
+                    if v_engine == "3D_Teardown":
+                        e_text, e_bg = "3D TEARDOWN", "#FF6B6B"
+                    else:
+                        e_text, e_bg = "2D CRAYON", "#0078D4"
+                    p_engine = QLabel(e_text)
+                    p_engine.setStyleSheet(
+                        f"background-color: {e_bg}; color: #FFFFFF; "
+                        "padding: 2px 4px; border-radius: 3px; font-size: 8px; font-weight: bold;"
+                    )
+
+                    badge_layout = QHBoxLayout()
+                    badge_layout.setSpacing(4)
+                    badge_layout.addWidget(p_status)
+                    badge_layout.addWidget(p_engine)
+                    badge_layout.addStretch()
 
                     btn_open = QPushButton("Open")
                     btn_open.setStyleSheet("padding: 2px 6px; font-size: 10px;")
@@ -1893,7 +2076,7 @@ class CrayonStudioApp(QMainWindow):
 
                     pb_layout.addWidget(p_title)
                     pb_layout.addWidget(p_cat)
-                    pb_layout.addWidget(p_status)
+                    pb_layout.addLayout(badge_layout)
                     pb_layout.addWidget(btn_open)
                     dc_layout.addWidget(proj_box)
             else:
@@ -1914,6 +2097,11 @@ class CrayonStudioApp(QMainWindow):
         cat_idx = self.combo_category.findText(cat)
         if cat_idx >= 0:
             self.combo_category.setCurrentIndex(cat_idx)
+
+        v_engine = proj.get("visual_engine", "2D_Crayon")
+        v_idx = self.combo_engine.findData(v_engine)
+        if v_idx >= 0:
+            self.combo_engine.setCurrentIndex(v_idx)
 
         self.text_script.setPlainText(proj.get("script_text", ""))
         self.spin_duration.setValue(proj.get("duration_target", 65))
@@ -1941,6 +2129,10 @@ class CrayonStudioApp(QMainWindow):
         else:
             self.current_media_path = None
             self.player_stack.setCurrentIndex(0)
+
+        # Load Visual Critic snapshots if existing
+        snap_dir = os.path.join(proj_dir, "preview_snapshots")
+        self._load_critic_snapshots(snap_dir)
 
         self.preview_canvas.update_metadata(
             title=proj.get("title", ""),

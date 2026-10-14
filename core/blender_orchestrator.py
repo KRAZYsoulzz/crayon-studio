@@ -691,8 +691,27 @@ def reset_and_configure_scene():
     cam_obj.location = (0.0, 0.0, 10.0)
     cam_obj.rotation_euler = (0.0, 0.0, 0.0)
 
-    # Subtle paper grain background frame lines (keeps Frame 1 visually grounded)
-    return scene
+    # Giant Continuous Paper Background Plane across all 5 spatial zones
+    try:
+        paper_mesh = bpy.data.meshes.new("ContinuousPaperMesh")
+        paper_obj = bpy.data.objects.new("ContinuousPaper", paper_mesh)
+        scene.collection.objects.link(paper_obj)
+        verts = [(-8.0, -10.0, -0.05), (24.0, -10.0, -0.05), (24.0, 10.0, -0.05), (-8.0, 10.0, -0.05)]
+        faces = [(0, 1, 2, 3)]
+        paper_mesh.from_pydata(verts, [], faces)
+        paper_mesh.update()
+        paper_mat = bpy.data.materials.new("ContinuousPaperMat")
+        paper_mat.use_nodes = True
+        bsdf = paper_mat.node_tree.nodes.get("Principled BSDF")
+        if bsdf:
+            bsdf.inputs[0].default_value = (0.965, 0.945, 0.902, 1.0)
+            if "Roughness" in bsdf.inputs:
+                bsdf.inputs["Roughness"].default_value = 0.95
+        paper_obj.data.materials.append(paper_mat)
+    except Exception:
+        pass
+
+    return scene, cam_obj, cam_data
 
 def get_or_create_crayon_material(name, rgba):
     if name in bpy.data.materials:
@@ -871,8 +890,8 @@ def apply_crayon_style_and_modifiers(obj, mat, start_frame, draw_frames, end_fra
                 except Exception:
                     pass
 
-def keyframe_visibility(obj, visible_start, visible_end, total_frames):
-    """Controls exact frame range visibility for each Act and Erase transition."""
+def keyframe_appearance(obj, visible_start, total_frames):
+    """Ensures drawn objects appear at their Act start and remain visible across the continuous canvas."""
     def set_vis(frame, hidden):
         try:
             obj.hide_render = hidden
@@ -887,13 +906,98 @@ def keyframe_visibility(obj, visible_start, visible_end, total_frames):
             set_vis(1, True)
             set_vis(visible_start - 1, True)
         set_vis(visible_start, False)
-        set_vis(visible_end, False)
-        if visible_end < total_frames:
-            set_vis(visible_end + 1, True)
+        set_vis(total_frames, False)
     except Exception:
         pass
 
-def animate_puppet_kinematics(obj, motion_type, start_f, end_f, base_pivot):
+def create_connector_arrow(start_pt, end_pt, name, mat, draw_start, draw_duration):
+    """Draws animated dashed crayon connector arrow across paper linking Zone i to Zone i+1."""
+    try:
+        curve_data = bpy.data.curves.new(name, type='CURVE')
+        curve_data.dimensions = '2D'
+        polyline = curve_data.splines.new('POLY')
+        mid_x = (start_pt[0] + end_pt[0]) / 2.0
+        mid_y = (start_pt[1] + end_pt[1]) / 2.0 + 0.28
+        pts = [
+            (start_pt[0] + 0.5, start_pt[1], 0.0),
+            (mid_x, mid_y, 0.0),
+            (end_pt[0] - 0.5, end_pt[1], 0.0),
+        ]
+        polyline.points.add(len(pts) - 1)
+        for idx, pt in enumerate(pts):
+            polyline.points[idx].co = (pt[0], pt[1], pt[2], 1.0)
+        curve_data.bevel_depth = 0.022
+        curve_obj = bpy.data.objects.new(name, curve_data)
+        bpy.context.scene.collection.objects.link(curve_obj)
+        if hasattr(curve_obj.data, "materials"):
+            curve_obj.data.materials.append(mat)
+        curve_data.bevel_factor_end = 0.0
+        curve_data.keyframe_insert(data_path="bevel_factor_end", frame=draw_start)
+        curve_data.bevel_factor_end = 1.0
+        curve_data.keyframe_insert(data_path="bevel_factor_end", frame=draw_start + draw_duration)
+        return curve_obj
+    except Exception:
+        return None
+
+def animate_camera_glide(cam_obj, cam_data, scenes, total_frames):
+    """Smoothly glides 2D camera between spatial zones with mid-act zoom-in for details."""
+    ZONE_OFFSETS = [
+        (0.0, 0.0, 10.0),
+        (3.8, 0.4, 10.0),
+        (7.6, -0.4, 10.0),
+        (11.4, 0.3, 10.0),
+        (15.2, 0.0, 10.0),
+    ]
+    for i, sc in enumerate(scenes):
+        s_f = sc["start_frame"]
+        e_f = sc["end_frame"]
+        cur_z = ZONE_OFFSETS[i % len(ZONE_OFFSETS)]
+
+        # Pan into current zone at start of act (15-frame ease)
+        if i == 0:
+            try:
+                cam_obj.location = cur_z
+                cam_obj.keyframe_insert(data_path="location", frame=1)
+                cam_data.ortho_scale = 3.2
+                cam_data.keyframe_insert(data_path="ortho_scale", frame=1)
+            except Exception:
+                pass
+        else:
+            try:
+                prev_z = ZONE_OFFSETS[(i - 1) % len(ZONE_OFFSETS)]
+                cam_obj.location = prev_z
+                cam_obj.keyframe_insert(data_path="location", frame=s_f)
+                cam_obj.location = cur_z
+                cam_obj.keyframe_insert(data_path="location", frame=min(e_f, s_f + 15))
+            except Exception:
+                pass
+
+        # Mid-act zoom-in on critical sub-detail (3.2 -> 2.4 -> 3.2)
+        mid_f = int((s_f + e_f) / 2)
+        try:
+            cam_data.ortho_scale = 3.2
+            cam_data.keyframe_insert(data_path="ortho_scale", frame=min(e_f - 2, s_f + 15))
+            cam_data.ortho_scale = 2.4
+            cam_data.keyframe_insert(data_path="ortho_scale", frame=mid_f)
+            cam_data.ortho_scale = 3.2
+            cam_data.keyframe_insert(data_path="ortho_scale", frame=max(s_f + 20, e_f - 8))
+        except Exception:
+            pass
+
+    # Smooth Bezier interpolation
+    try:
+        if cam_obj.animation_data and cam_obj.animation_data.action:
+            for fcurve in cam_obj.animation_data.action.fcurves:
+                for kf in fcurve.keyframe_points:
+                    kf.interpolation = 'BEZIER'
+        if cam_data.animation_data and cam_data.animation_data.action:
+            for fcurve in cam_data.animation_data.action.fcurves:
+                for kf in fcurve.keyframe_points:
+                    kf.interpolation = 'BEZIER'
+    except Exception:
+        pass
+
+def animate_puppet_kinematics(obj, motion_type, start_f, end_f, base_pivot, zone_offset=(0.0, 0.0, 0.0)):
     """Keyframes true 2D articulated movement (hinges, ratchets, cascades, recoils) per puppet part."""
     def safe_kf(data_path, frame):
         try:
@@ -901,7 +1005,9 @@ def animate_puppet_kinematics(obj, motion_type, start_f, end_f, base_pivot):
         except Exception:
             pass
 
-    ox, oy, oz = base_pivot
+    ox = base_pivot[0] + zone_offset[0]
+    oy = base_pivot[1] + zone_offset[1]
+    oz = base_pivot[2] + zone_offset[2]
     try:
         obj.location = (ox, oy, oz)
         obj.rotation_euler = (0.0, 0.0, 0.0)
@@ -1009,7 +1115,7 @@ def animate_puppet_kinematics(obj, motion_type, start_f, end_f, base_pivot):
                 pass
 
 def build_full_animation():
-    scene = reset_and_configure_scene()
+    scene, cam_obj, cam_data = reset_and_configure_scene()
     total_frames = PAYLOAD["total_frames"]
 
     palette = {{
@@ -1020,16 +1126,23 @@ def build_full_animation():
         "paper_erase": get_or_create_crayon_material("PaperEraser", (0.965, 0.945, 0.902, 1.0)),
     }}
 
+    ZONE_OFFSETS = [
+        (0.0, 0.0, 0.0),
+        (3.8, 0.4, 0.0),
+        (7.6, -0.4, 0.0),
+        (11.4, 0.3, 0.0),
+        (15.2, 0.0, 0.0),
+    ]
+
     scenes = PAYLOAD["scenes"]
     manifest = PAYLOAD["svg_manifest"]
-    eraser_info = manifest.get("_eraser", [])
 
-    for sc in scenes:
+    for sc_idx, sc in enumerate(scenes):
         act_name = sc["name"]
         s_frame = sc["start_frame"]
         e_frame = sc["end_frame"]
         d_frames = sc["draw_frames"]
-        er_frames = sc["erase_frames"]
+        cur_zone = ZONE_OFFSETS[sc_idx % len(ZONE_OFFSETS)]
 
         parts = manifest.get(act_name, [])
         for p_idx, part in enumerate(parts):
@@ -1050,32 +1163,28 @@ def build_full_animation():
             apply_crayon_style_and_modifiers(
                 gp_obj, mat, start_frame=part_start, draw_frames=part_draw_frames, end_frame=e_frame
             )
-            keyframe_visibility(gp_obj, s_frame, e_frame, total_frames)
+            # Continuous giant canvas: stays permanently on paper once drawn
+            keyframe_appearance(gp_obj, s_frame, total_frames)
             animate_puppet_kinematics(
                 gp_obj,
                 part.get("motion", "none"),
                 s_frame,
                 e_frame,
                 tuple(part.get("pivot", (0.0, 0.0, 0.0))),
+                zone_offset=cur_zone,
             )
 
-        # Add Erase-and-Replace Scribble Wipe at the end of Acts 1-4
-        if sc["index"] < len(scenes) - 1 and eraser_info:
-            er_svg = eraser_info[0]["file"]
-            if os.path.exists(er_svg):
-                er_start = max(s_frame + 10, e_frame - er_frames)
-                er_obj = import_svg_as_grease_pencil(er_svg, f"Eraser_{{act_name}}")
-                if er_obj:
-                    er_obj.location = (0.0, 0.0, 0.5)
-                    apply_crayon_style_and_modifiers(
-                        er_obj,
-                        palette["paper_erase"],
-                        start_frame=er_start,
-                        draw_frames=er_frames,
-                        end_frame=e_frame,
-                        is_eraser=True,
-                    )
-                    keyframe_visibility(er_obj, er_start, e_frame, total_frames)
+        # Draw dashed connector arrow to next zone across continuous paper
+        if sc_idx < len(scenes) - 1:
+            next_zone = ZONE_OFFSETS[(sc_idx + 1) % len(ZONE_OFFSETS)]
+            arrow_start = max(s_frame + 10, e_frame - 18)
+            create_connector_arrow(
+                cur_zone, next_zone, f"Connector_{{act_name}}", palette["yellow"],
+                draw_start=arrow_start, draw_duration=15
+            )
+
+    # Animate smooth camera pan and zoom across the living blueprint
+    animate_camera_glide(cam_obj, cam_data, scenes, total_frames)
 
     print(f"[CrayonStudio] Rendering {{total_frames}} frames to {{PAYLOAD['output_mp4_path']}}...")
     bpy.ops.render.render(animation=True)

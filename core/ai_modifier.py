@@ -124,6 +124,25 @@ def modify_script(
                 "From pressing elevator buttons multiple times to superstitious game-day rituals, we manufacture false agency to shield ourselves from existential chaos. "
                 "The moment you recognize this psychological blindspot, you begin catching yourself doing it constantly throughout your daily life, especially when you remember that deep down, our daily choices are driven by the fact that:"
             )
+        elif category == "Engineering":
+            return (
+                "Every mechanical engineer knows that inside every push-button lighter sits an astonishing piece of solid-state physics that produces fifteen thousand volts without a single battery. "
+                "When your thumb pushes the spring-loaded plunger downward, it does not simply close an electric circuit. "
+                "Instead, a hardened steel hammer strikes a microscopic quartz crystal with immense kinetic velocity. "
+                "Because of the piezoelectric effect, compressing the crystal lattice violently displaces internal ions, generating an electric field so powerful that it ionizes the surrounding air molecules into a blazing blue plasma spark. "
+                "At the exact same microsecond, a miniature lever opens the butane valve, sending pressurized fuel directly into the ionized gap to ignite the flame. "
+                "Watch what happens when we pull the internal components apart in exploded slow-motion: the steel spring re-cocks instantly, proving that raw kinetic impact can generate pure electrical energy every time you ask:"
+            )
+        elif category == "How It's Made":
+            return (
+                "Have you ever wondered what actually happens inside a high-speed brushless electric motor spinning at forty thousand rotations per minute? "
+                "To reveal the internal engineering, we stripped away the aerospace-grade aluminum casing to expose the precision magnetic assembly hidden beneath. "
+                "At the center sits a rotor mounted with alternating neodymium permanent magnets, suspended on dual miniature ceramic ball bearings that eliminate friction. "
+                "Surrounding the rotor is a stator wound with three distinct sets of high-purity enameled copper wire coils. "
+                "Rather than using physical carbon brushes that wear down and spark, an electronic microchip pulses three-phase electric current through the coils in a perfectly choreographed sequence. "
+                "This creates a rotating magnetic field that literally pulls and drags the rotor magnets in an endless circular loop without ever making physical contact. "
+                "Every single step of this high-precision electromagnetic choreography proves that frictionless motion is possible when you understand how:"
+            )
         else:  # STEM
             return (
                 "If you drop a heavy bowling ball and a lightweight feather inside a giant vacuum chamber, they hit the floor at the exact same millisecond. "

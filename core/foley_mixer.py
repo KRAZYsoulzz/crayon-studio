@@ -57,6 +57,65 @@ def _synthesize_paper_rustle(duration: float, sr: int = DEFAULT_SAMPLE_RATE) -> 
     return (noise * drift).astype(np.float32)
 
 
+def _synthesize_studio_hum(duration: float, sr: int = DEFAULT_SAMPLE_RATE) -> np.ndarray:
+    """Generate subtle dark studio hum with low-frequency resonance for 3D teardowns."""
+    num_samples = int(duration * sr)
+    t = np.linspace(0, duration, num_samples, endpoint=False)
+    # 55Hz fundamental + 110Hz harmonic + warm floor noise
+    hum = (
+        0.015 * np.sin(2 * np.pi * 55.0 * t)
+        + 0.008 * np.sin(2 * np.pi * 110.0 * t)
+        + 0.005 * np.random.normal(0, 1.0, num_samples)
+    ).astype(np.float32)
+    return hum
+
+
+def _synthesize_metallic_click(sr: int = DEFAULT_SAMPLE_RATE) -> np.ndarray:
+    """Generate crisp high-frequency metallic ratchet / latch click (20ms)."""
+    duration = 0.02
+    num_samples = int(duration * sr)
+    t = np.linspace(0, duration, num_samples, endpoint=False)
+    decay_env = np.exp(-t * 220.0).astype(np.float32)
+    # Multi-frequency metallic resonant modes (3200Hz, 5400Hz, 8100Hz)
+    chime = (
+        0.30 * np.sin(2 * np.pi * 3200.0 * t)
+        + 0.20 * np.sin(2 * np.pi * 5400.0 * t)
+        + 0.12 * np.sin(2 * np.pi * 8100.0 * t)
+        + 0.08 * np.random.normal(0, 1.0, num_samples)
+    )
+    return (chime * decay_env * 0.45).astype(np.float32)
+
+
+def _synthesize_servo_sweep(duration: float = 0.55, sr: int = DEFAULT_SAMPLE_RATE) -> np.ndarray:
+    """Generate smooth pitch-chirping electric servo motor sweep during assembly/explosion."""
+    num_samples = int(duration * sr)
+    t = np.linspace(0, duration, num_samples, endpoint=False)
+    # Frequency sweep 380Hz -> 1350Hz
+    freqs = np.linspace(380.0, 1350.0, num_samples)
+    phase = 2.0 * np.pi * np.cumsum(freqs) / sr
+    env = (np.sin(np.pi * (t / duration)) ** 2).astype(np.float32)
+    carrier = (
+        0.10 * np.sin(phase)
+        + 0.04 * np.sin(phase * 2.0)
+        + 0.025 * np.random.normal(0, 1.0, num_samples)
+    )
+    return (carrier * env * 0.40).astype(np.float32)
+
+
+def _synthesize_electrical_snap(sr: int = DEFAULT_SAMPLE_RATE) -> np.ndarray:
+    """Generate sharp piezo spark / transient mechanical snap (15ms)."""
+    duration = 0.015
+    num_samples = int(duration * sr)
+    t = np.linspace(0, duration, num_samples, endpoint=False)
+    decay_env = np.exp(-t * 360.0).astype(np.float32)
+    snap = (
+        0.45 * np.sin(2 * np.pi * 6800.0 * t)
+        + 0.25 * np.sin(2 * np.pi * 9200.0 * t)
+        + 0.20 * np.random.normal(0, 1.0, num_samples)
+    )
+    return (snap * decay_env * 0.50).astype(np.float32)
+
+
 def ensure_default_sfx_assets(sfx_dir: str) -> None:
     """Ensure baseline SFX samples exist in the sfx directory."""
     os.makedirs(sfx_dir, exist_ok=True)
@@ -80,11 +139,15 @@ def generate_foley_track(
     duration: float,
     sfx_dir: Optional[str] = None,
     sample_rate: int = DEFAULT_SAMPLE_RATE,
+    visual_engine: str = "2D_Crayon",
 ) -> str:
     """Scan word timestamps and generate a synchronized Foley audio WAV file.
 
-    Places crayon scribbles during active spoken segments and layers gentle
-    paper texture throughout the duration.
+    When visual_engine is '2D_Crayon':
+      Layers paper rustle room tone and synchronized crayon scribble friction.
+    When visual_engine is '3D_Teardown':
+      Layers dark studio hum, metallic ratchet clicks, servo sweeps during
+      exploded-view transitions, and electrical/mechanical transient snaps.
 
     Args:
         words_json_path: Path to the JSON containing word timestamps.
@@ -92,6 +155,7 @@ def generate_foley_track(
         duration: Total target duration in seconds.
         sfx_dir: Directory containing optional source samples (defaults to templates/sfx).
         sample_rate: Sample rate for the output WAV file.
+        visual_engine: '2D_Crayon' or '3D_Teardown'.
 
     Returns:
         Absolute path to the rendered Foley WAV track.
@@ -108,11 +172,6 @@ def generate_foley_track(
     total_samples = int(duration * sample_rate)
     foley_mix = np.zeros(total_samples, dtype=np.float32)
 
-    # 1. Base paper room presence
-    paper_ambient = _synthesize_paper_rustle(duration, sample_rate)
-    foley_mix[: len(paper_ambient)] += paper_ambient * 0.35
-
-    # 2. Parse word intervals
     words: list = []
     if os.path.exists(words_json_path):
         try:
@@ -121,25 +180,69 @@ def generate_foley_track(
         except Exception as e:
             logger.warning("Could not read words JSON for Foley sync (%s). Using generic cadence.", e)
 
-    # 3. Layer scribble sound on words
-    for item in words:
-        start_sec = item.get("start", 0.0)
-        end_sec = item.get("end", start_sec + 0.3)
-        stroke_dur = max(0.12, end_sec - start_sec)
+    is_3d = (visual_engine == "3D_Teardown")
 
-        start_idx = int(start_sec * sample_rate)
-        if start_idx >= total_samples:
-            continue
+    if is_3d:
+        # 1. Dark studio baseline hum
+        hum = _synthesize_studio_hum(duration, sample_rate)
+        foley_mix[: len(hum)] += hum * 0.40
 
-        stroke = _synthesize_crayon_stroke(stroke_dur, sample_rate)
-        # Randomize volume slightly for human organic variance
-        stroke_vol = np.random.uniform(0.65, 0.95)
-        stroke = stroke * stroke_vol
+        # 2. Exploded-view transition servo sweeps (at 18%, 28%, and 78% of duration)
+        sweep_timestamps = [duration * 0.18, duration * 0.28, duration * 0.78]
+        for st in sweep_timestamps:
+            sweep = _synthesize_servo_sweep(0.55, sample_rate)
+            idx_start = int(st * sample_rate)
+            idx_end = min(total_samples, idx_start + len(sweep))
+            if idx_start < total_samples:
+                foley_mix[idx_start:idx_end] += sweep[: idx_end - idx_start]
 
-        end_idx = min(total_samples, start_idx + len(stroke))
-        actual_len = end_idx - start_idx
-        if actual_len > 0:
-            foley_mix[start_idx:end_idx] += stroke[:actual_len]
+        # 3. Synchronized mechanical clicks and transient snaps aligned with words
+        action_keywords = {"spark", "strike", "hit", "trigger", "volt", "piezo", "click", "lock",
+                           "press", "release", "spring", "coil", "current", "flow", "gear", "torque",
+                           "hammer", "crystal", "layer", "inside", "chamber", "core"}
+
+        for i, item in enumerate(words):
+            word_str = str(item.get("word", "")).lower().strip(".,!?;:\"'")
+            start_sec = item.get("start", 0.0)
+            start_idx = int(start_sec * sample_rate)
+            if start_idx >= total_samples:
+                continue
+
+            # Check for spark / impact keyword or punctuation
+            if word_str in action_keywords or any(p in str(item.get("word", "")) for p in (".", "!", "?")):
+                snap = _synthesize_electrical_snap(sample_rate)
+                end_idx = min(total_samples, start_idx + len(snap))
+                foley_mix[start_idx:end_idx] += snap[: end_idx - start_idx]
+            elif i % 4 == 0:
+                # Ratchet click cadence
+                click = _synthesize_metallic_click(sample_rate)
+                end_idx = min(total_samples, start_idx + len(click))
+                foley_mix[start_idx:end_idx] += click[: end_idx - start_idx]
+
+    else:
+        # 2D CRAYON ENGINE FOLEY
+        # 1. Base paper room presence
+        paper_ambient = _synthesize_paper_rustle(duration, sample_rate)
+        foley_mix[: len(paper_ambient)] += paper_ambient * 0.35
+
+        # 2. Layer scribble sound on words
+        for item in words:
+            start_sec = item.get("start", 0.0)
+            end_sec = item.get("end", start_sec + 0.3)
+            stroke_dur = max(0.12, end_sec - start_sec)
+
+            start_idx = int(start_sec * sample_rate)
+            if start_idx >= total_samples:
+                continue
+
+            stroke = _synthesize_crayon_stroke(stroke_dur, sample_rate)
+            stroke_vol = np.random.uniform(0.65, 0.95)
+            stroke = stroke * stroke_vol
+
+            end_idx = min(total_samples, start_idx + len(stroke))
+            actual_len = end_idx - start_idx
+            if actual_len > 0:
+                foley_mix[start_idx:end_idx] += stroke[:actual_len]
 
     # Prevent clipping
     peak = np.max(np.abs(foley_mix))
@@ -147,5 +250,5 @@ def generate_foley_track(
         foley_mix = foley_mix / peak * 0.90
 
     sf.write(output_sfx_path, foley_mix, sample_rate, subtype="PCM_16")
-    logger.info("Synchronized Foley track rendered to: %s (%.2fs)", output_sfx_path, duration)
+    logger.info("Synchronized Foley track rendered to: %s (%.2fs, engine: %s)", output_sfx_path, duration, visual_engine)
     return output_sfx_path
