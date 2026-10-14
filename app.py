@@ -17,7 +17,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import QDate, QSize, Qt, QThread, QTime, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QDate, QRect, QSize, Qt, QThread, QTime, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -605,6 +605,7 @@ class VerticalPreviewCanvas(QWidget):
         self.category = "STEM"
         self.words: List[Dict[str, Any]] = []
         self.blocks: List[Dict[str, Any]] = []
+        self.playback_pos_ms = 0
         self.total_duration_ms = 65000
         self.is_playing = False
 
@@ -804,6 +805,7 @@ class VerticalPreviewCanvas(QWidget):
         painter.drawText(inner_rect.adjusted(1, 1, 1, 1), Qt.AlignCenter | Qt.TextWordWrap, active_block_text)
         painter.setPen(QColor("#FFFFFF"))
         painter.drawText(inner_rect, Qt.AlignCenter | Qt.TextWordWrap, active_block_text)
+        painter.end()
 
 
 # =====================================================================
