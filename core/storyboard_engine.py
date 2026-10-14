@@ -1,8 +1,11 @@
 """
-CRAYON STUDIO — AI Storyboard & Sketch-Reveal Engine
-Generates 1080x1920 educational storybook illustrations synced to script cues,
-and animates them with progressive hand-drawn sketch-reveals, color bloom,
-and 2.5D camera push-ins at 150+ fps via OpenCV.
+CRAYON STUDIO — True AI Video & 3D Pixar Storyboard Engine
+Supports:
+1. True AI Video Generation via Veo 3.1 (veo-3.1-fast-generate-preview / veo-3.0)
+2. Direct importation of pre-rendered clips (clip_01.mp4 ... clip_06.mp4 from Google Flow / Veo)
+3. 3D Pixar / Zack D. Films / Kurzgesagt style keyframe generation with zero watermark
+4. Active 30fps OpenCV physics layers (water waves/splashes, growing crystals, floating particles)
+5. ZERO white flash resets & ZERO on-screen prompt text (bottom 38% reserved for captions)
 """
 
 import os
@@ -11,45 +14,47 @@ import json
 import math
 import time
 import shutil
+import base64
+import subprocess
 import urllib.parse
 import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter
 
 
 class AIStoryboardEngine:
     """
-    Universal AI Storyboard & Sketch-Reveal Engine for CrayonStudio.
-    Replaces slow Blender math-curve generation with high-fidelity,
-    style-consistent 1080x1920 educational illustrations rendered
-    and animated via OpenCV in ~15-20 seconds.
+    True AI Video & 3D Pixar Storyboard Engine for CrayonStudio.
     """
 
-    DEFAULT_STYLE_DNA = (
-        "Rich educational textbook storybook illustration style, hand-drawn wax crayon and fine ink strokes "
-        "on textured warm cream parchment paper. Vibrant accent colors (Prussian blue, gold ochre, terracotta red, "
-        "sage green) against clean charcoal structural outlines. Detailed diagrammatic cross-section and cutaway view "
-        "with bold arrows and technical callouts. Soft warm studio lighting. Clear visual hierarchy."
+    PIXAR_STYLE_DNA = (
+        "3D Pixar style and Zack D. Films style educational 3D animation, cute expressive mechanical cutaway, "
+        "rich tactile clay and stone materials with subsurface scattering, cinematic volumetric lighting, vibrant saturated color palette, "
+        "highly detailed 3D render, vertical 9:16 aspect ratio, main subject prominently centered in the upper 62% of frame, "
+        "leaving the bottom 38% completely clean and empty, no text, no words, no letters, no watermark, masterpiece 4k."
     )
 
     TEARDOWN_STYLE_DNA = (
-        "Exploded-view 3D CAD technical teardown, isometric mechanical engineering cutaway illustration. "
-        "Precision technical linework with subtle graphite shading, isolated on clean parchment grid paper. "
-        "Internal components detached along expansion axes with cyan and amber callout badges, "
-        "dimension leader lines, and cross-section material hatches."
+        "Exploded-view 3D CAD mechanical engineering teardown animation, cute 3D isometric cutaway illustration, "
+        "precision metallic and transparent glass materials, glowing cyan and amber energy paths, clean background, "
+        "vertical 9:16 layout, central mechanism in upper 62% of frame, leaving bottom 38% completely clean and empty, "
+        "no text, no words, no letters, no watermark, masterpiece 4k."
     )
 
     def __init__(self, config_path: str = "config.json", gemini_api_key: Optional[str] = None):
         self.config_path = config_path
         self.gemini_api_key = gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
-        if not self.gemini_api_key and os.path.exists(config_path):
+        self.ffmpeg_path = "ffmpeg"
+        if os.path.exists(config_path):
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     cfg = json.load(f)
-                    self.gemini_api_key = cfg.get("gemini_api_key", "")
+                    if not self.gemini_api_key:
+                        self.gemini_api_key = cfg.get("gemini_api_key", "")
+                    self.ffmpeg_path = cfg.get("ffmpeg_path", "ffmpeg")
             except Exception:
                 pass
 
@@ -60,12 +65,11 @@ class AIStoryboardEngine:
     ) -> str:
         """
         Analyzes a style reference image using Gemini Vision if an API key is available,
-        or returns the high-fidelity default Style DNA.
+        or returns the 3D Pixar Style DNA.
         """
         if not style_image_path or not os.path.exists(style_image_path):
-            return self.DEFAULT_STYLE_DNA
+            return self.PIXAR_STYLE_DNA
 
-        # Check for cached DNA next to reference image
         cached_txt = os.path.splitext(style_image_path)[0] + "_dna.txt"
         if os.path.exists(cached_txt):
             try:
@@ -79,20 +83,18 @@ class AIStoryboardEngine:
         if self.gemini_api_key:
             try:
                 if progress_callback:
-                    progress_callback("🔍 Analyzing reference screenshot style with Gemini Vision...")
+                    progress_callback("[Director] Analyzing reference screenshot with Gemini Vision...")
                 from google import genai
 
                 client = genai.Client(api_key=self.gemini_api_key)
                 img = Image.open(style_image_path)
                 prompt = (
-                    "Analyze the visual artistic aesthetic of this reference image. "
-                    "In 3 concise sentences, describe its: 1) color palette and lighting, "
-                    "2) line texture / artistic medium (e.g. crayon, pencil, blueprint, watercolor), "
-                    "3) background paper/surface texture and diagrammatic typography. "
-                    "Output only the concise descriptive style prompt."
+                    "Analyze the 3D visual artistic style of this image. "
+                    "In 2 sentences, describe its lighting, 3D character/material rendering style, and color palette. "
+                    "End with: 'no text, no words, no letters, vertical 9:16 aspect ratio'."
                 )
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-3.8-flash",
                     contents=[img, prompt],
                 )
                 if response.text:
@@ -105,9 +107,9 @@ class AIStoryboardEngine:
                     return dna
             except Exception as e:
                 if progress_callback:
-                    progress_callback(f"⚠️ Gemini Vision analysis skipped ({e}). Using default style DNA.")
+                    progress_callback(f"[Director] Gemini Vision analysis note ({e}). Using 3D Pixar style DNA.")
 
-        return self.DEFAULT_STYLE_DNA
+        return self.PIXAR_STYLE_DNA
 
     def segment_script_into_scenes(
         self,
@@ -117,7 +119,7 @@ class AIStoryboardEngine:
         default_duration: float = 65.0,
     ) -> List[Dict[str, Any]]:
         """
-        Segments script text and Whisper word timestamps into 5 to 8 timed visual scenes.
+        Segments script text and Whisper word timestamps into 5 to 7 timed visual scenes.
         """
         words: List[Dict[str, Any]] = []
         if os.path.exists(words_json_path):
@@ -132,14 +134,12 @@ class AIStoryboardEngine:
         target_count = max(4, min(8, target_count))
 
         if not words:
-            # Fallback when timestamps are absent: split by sentence
             sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", script_text) if s.strip()]
             if not sentences:
                 sentences = [script_text]
 
             chunk_size = max(1, math.ceil(len(sentences) / target_count))
             scenes = []
-            dur_per_scene = total_duration / max(1, len(sentences))
             for i in range(0, len(sentences), chunk_size):
                 chunk = sentences[i : i + chunk_size]
                 s_time = (i / len(sentences)) * total_duration
@@ -153,7 +153,6 @@ class AIStoryboardEngine:
                 })
             return scenes
 
-        # When Whisper word timestamps are available: split at natural sentence / clause boundaries
         scenes: List[Dict[str, Any]] = []
         target_dur = total_duration / target_count
         boundary_indices = []
@@ -170,7 +169,6 @@ class AIStoryboardEngine:
                 w_end = float(w.get("end", 0.0))
                 diff = abs(w_end - ideal_time)
 
-                # Heavily prioritize sentence endings (. ! ?)
                 if any(w_text.endswith(p) for p in (".", "!", "?")):
                     score = diff * 0.4
                 elif any(w_text.endswith(p) for p in (",", ";", "—", ":")):
@@ -186,7 +184,6 @@ class AIStoryboardEngine:
                 boundary_indices.append(best_idx)
                 curr_start = best_idx
 
-        # Slice words into scenes
         slices = [0] + sorted(boundary_indices) + [len(words)]
         for i in range(len(slices) - 1):
             w_slice = words[slices[i] : slices[i + 1]]
@@ -213,121 +210,262 @@ class AIStoryboardEngine:
         style_dna: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Creates concrete, highly-specific illustration prompts for each timed scene.
+        Creates kid-friendly, concrete 3D Pixar / Kurzgesagt scene prompts for each beat of the script,
+        optimized for Google Flow Omni multi-turn conversational video continuity.
+        Enforces NO TEXT, NO WORDS, NO LETTERS, and leaves the bottom 38% empty for captions.
         """
-        dna = style_dna or (self.TEARDOWN_STYLE_DNA if visual_engine == "3D_Teardown" else self.DEFAULT_STYLE_DNA)
+        dna = style_dna or (self.TEARDOWN_STYLE_DNA if visual_engine == "3D_Teardown" else self.PIXAR_STYLE_DNA)
         enhanced_scenes = []
 
+        total = len(scenes)
         for sc in scenes:
             excerpt = sc.get("script_excerpt", "")
             idx = sc.get("scene_idx", 0)
-            total = len(scenes)
 
-            # Extract subject and core physical concept
-            clean_excerpt = re.sub(r'["\']', '', excerpt)
-            subject_snippet = " ".join(clean_excerpt.split()[:14])
+            # Universal topic physical action description
+            ex_lower = excerpt.lower()
+            if any(w in ex_lower for w in ["ocean", "waves", "water", "crumble", "50 years", "50 year"]):
+                action_desc = "giant ancient Roman concrete breakwater wall enduring massive splashing turquoise ocean waves with water droplets and foam"
+            elif any(w in ex_lower for w in ["microscope", "cameras", "quicklime", "volcanic", "ash", "pozzolana", "mortar"]):
+                action_desc = "3D cutaway showing glowing white quicklime clasts and red volcanic pozzolana ash particles embedded inside a concrete block"
+            elif any(w in ex_lower for w in ["saltwater", "infiltrates", "pores", "dissolve", "brine"]):
+                action_desc = "turquoise ocean water flowing inside microscopic porous crack tunnels within the concrete block, smooth fluid motion"
+            elif any(w in ex_lower for w in ["crystal", "tobermorite", "voids", "stitching", "bone", "interlocking"]):
+                action_desc = "glowing emerald green tobermorite crystals sprouting and interlocking like tiny magic puzzle blocks, stitching the microcrack closed"
+            elif any(w in ex_lower for w in ["destroying", "fueling", "tighter", "decade", "chemical lock"]):
+                action_desc = "massive indestructible ancient Roman concrete harbor illuminated with glowing strength under dramatic ocean waves"
+            elif any(w in ex_lower for w in ["engine", "motor", "gear", "battery", "wire", "magnet", "copper"]):
+                action_desc = "cute 3D mechanical cutaway showing precision copper coils, spinning magnets, and glowing energy flow"
+            elif any(w in ex_lower for w in ["cell", "dna", "virus", "bacteria", "molecule", "blood"]):
+                action_desc = "vibrant 3D microscopic view of cellular structures and floating glowing molecular strands"
+            elif any(w in ex_lower for w in ["heist", "vault", "lock", "laser", "detective"]):
+                action_desc = "dramatic 3D isometric cutaway of a high-tech bank vault with glowing security beams and gears"
+            else:
+                action_desc = f"cute 3D educational animation explaining {excerpt[:60].strip()}"
 
-            # Composition and safe zone instructions
-            if visual_engine == "3D_Teardown":
-                concept_prompt = (
-                    f"Exploded-view 3D mechanical teardown illustration depicting: {subject_snippet}. "
-                    f"Context: {clean_excerpt[:180]}. "
-                    f"Isometric perspective, internal parts separated along guide rails with cyan and gold accent badges. "
-                    f"Vertical 9:16 layout, central mechanism prominently framed in upper 70% of canvas, "
-                    f"leaving bottom 30% clean for subtitles. {dna}"
+            # Strict 3D animation prompt (NO TEXT, NO WORDS, NO LABELS)
+            prompt = (
+                f"3D Pixar style educational animation of {action_desc}. "
+                f"Story context: {excerpt[:120]}. "
+                f"{dna} "
+                f"Vertical 9:16 layout, main action framed in upper 62% of screen, "
+                f"clean uncluttered bottom 38% empty for subtitles, strictly no text, no words, no letters, no watermark."
+            )
+
+            # Google Flow Omni Multi-Turn Continuity Prompt
+            if idx == 0:
+                omni_prompt = (
+                    f"Vertical 9:16 3D Pixar style educational animation of {action_desc}. "
+                    f"Story context: {excerpt[:100]}. "
+                    f"Cinematic atmospheric lighting, rich volumetric depth, clean cute 3D cartoon rendering. "
+                    f"Main action centered in upper 60% of frame, keep lower 38% clean and empty for captions. "
+                    f"Strictly no text, no words, no letters, no logos, no watermark."
                 )
             else:
-                concept_prompt = (
-                    f"Rich educational storybook diagram depicting: {subject_snippet}. "
-                    f"Detailed context: {clean_excerpt[:180]}. "
-                    f"Anatomical cross-section cutaway with bold charcoal pencil outlines, vibrant wax crayon fills, "
-                    f"and technical arrow callouts on warm cream parchment paper. "
-                    f"Vertical 9:16 layout, main subject framed in upper 70% of canvas, "
-                    f"leaving bottom 30% clean for subtitles. {dna}"
+                omni_prompt = (
+                    f"Keep the exact same 3D Pixar educational animation style and visual continuity. "
+                    f"Cut to {action_desc}. "
+                    f"Story context: {excerpt[:100]}. "
+                    f"Main action centered in upper 60% of frame, keep lower 38% clean and empty for captions. "
+                    f"Strictly no text, no words, no letters, no watermark."
                 )
 
             sc_copy = dict(sc)
-            sc_copy["prompt"] = concept_prompt
-            sc_copy["concept_title"] = f"Act {idx + 1}/{total}: {subject_snippet[:32]}"
+            sc_copy["prompt"] = prompt
+            sc_copy["omni_prompt"] = omni_prompt
+            sc_copy["concept_title"] = f"Scene {idx + 1}/{total}"
+            sc_copy["action_desc"] = action_desc
             enhanced_scenes.append(sc_copy)
 
         return enhanced_scenes
 
-    def generate_procedural_fallback_card(
+    def generate_clean_fallback_card(
         self,
-        prompt: str,
         output_path: str,
         scene_idx: int = 0,
-        title: str = "Educational Diagram",
         category: str = "STEM",
+        action_desc: str = "",
     ) -> str:
         """
-        Offline fallback: Generates a high-resolution 1080x1920 textured architectural
-        diagrammatic card with guaranteed non-black/non-blank luminance.
+        Clean 3D-styled geometric emergency card:
+        - ZERO text, ZERO labels, ZERO prompt descriptions
+        - Bottom 38% (y >= 1180) 100% clean
+        - Soft gradients and modern 3D lighting
         """
         w, h = 1080, 1920
-        # Warm cream parchment background (BGR: 238, 244, 248 -> RGB: 248, 244, 238)
-        img = Image.new("RGB", (w, h), color=(248, 244, 238))
+        # Background: rich oceanic twilight gradient
+        base = np.zeros((h, w, 3), dtype=np.uint8)
+        # Vertical gradient from deep navy (top) to warm twilight teal (middle)
+        for y in range(h):
+            ratio = y / float(h)
+            r = int(14 + ratio * 20)
+            g = int(24 + ratio * 50)
+            b = int(48 + ratio * 70)
+            base[y, :] = (b, g, r)  # BGR
+
+        img = Image.fromarray(cv2.cvtColor(base, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img)
 
-        # Subtle drafting grid
-        grid_color = (235, 230, 222)
-        for x in range(60, w - 60, 48):
-            draw.line([(x, 80), (x, h - 80)], fill=grid_color, width=1)
-        for y in range(80, h - 80, 48):
-            draw.line([(60, y), (w - 60, y)], fill=grid_color, width=1)
+        # Draw soft 3D stylized central subject in upper 60% of frame (cx=540, cy=680)
+        cx, cy = w // 2, 680
 
-        # Architectural double frame
-        draw.rectangle([(50, 70), (w - 50, h - 180)], outline=(40, 40, 40), width=4)
-        draw.rectangle([(58, 78), (w - 58, h - 188)], outline=(210, 160, 20), width=2)
+        # Draw stylized 3D layered blocks (seawall cutaway)
+        colors = [(65, 85, 120), (80, 105, 145), (100, 130, 175), (45, 135, 195)]
+        for i, col in enumerate(colors):
+            bx = cx - 280 + i * 40
+            by = cy - 240 + i * 50
+            draw.rounded_rectangle([(bx, by), (bx + 480, by + 260)], radius=32, fill=col, outline=(220, 240, 255), width=3)
 
-        # Title Banner
-        draw.rectangle([(80, 110), (w - 80, 220)], fill=(28, 32, 42), outline=(210, 160, 20), width=2)
-        try:
-            font_title = ImageFont.truetype("arial.ttf", 36)
-            font_sub = ImageFont.truetype("arial.ttf", 24)
-            font_body = ImageFont.truetype("arial.ttf", 26)
-        except Exception:
-            font_title = font_sub = font_body = None
+        # Glowing emerald crystalline cluster in center
+        for a in range(8):
+            ang = a * (math.pi / 4.0)
+            px = int(cx + 120 * math.cos(ang))
+            py = int(cy + 40 + 70 * math.sin(ang))
+            draw.polygon([
+                (px, py - 40),
+                (px + 30, py),
+                (px, py + 40),
+                (px - 30, py),
+            ], fill=(30, 215, 140), outline=(230, 255, 240))
 
-        draw.text((110, 130), f"PHASE {scene_idx + 1} — {category.upper()} SCHEMATIC", fill=(245, 190, 40), font=font_title)
-        draw.text((110, 175), title[:42], fill=(230, 235, 240), font=font_sub)
-
-        # Central Visual Diagram (Arches, Cutaway Lattice, Dynamic Stress Lines)
-        cx, cy = w // 2, 850
-        # Main cross-section block
-        draw.rounded_rectangle([(cx - 380, cy - 340), (cx + 380, cy + 340)], radius=24, fill=(238, 232, 220), outline=(35, 35, 35), width=4)
-
-        # Internal geological / chemical crystal lattice
-        for row in range(-3, 4):
-            for col in range(-3, 4):
-                px = cx + col * 100
-                py = cy + row * 85
-                if row % 2 == 0:
-                    draw.ellipse([(px - 26, py - 26), (px + 26, py + 26)], fill=(215, 80, 45), outline=(30, 30, 30), width=3)
-                else:
-                    draw.regular_polygon((px, py, 28), 6, fill=(30, 120, 210), outline=(30, 30, 30), width=3)
-
-        # Directional Flow Arrows & Callout Ribbons
-        draw.line([(cx - 320, cy - 380), (cx - 100, cy - 380)], fill=(30, 120, 210), width=8)
-        draw.polygon([(cx - 90, cy - 380), (cx - 130, cy - 395), (cx - 130, cy - 365)], fill=(30, 120, 210))
-        draw.text((cx - 320, cy - 425), "INCOMING SEA BRINE / FLOW", fill=(30, 120, 210), font=font_sub)
-
-        draw.line([(cx + 100, cy + 390), (cx + 320, cy + 390)], fill=(215, 80, 45), width=8)
-        draw.polygon([(cx + 330, cy + 390), (cx + 290, cy + 375), (cx + 290, cy + 405)], fill=(215, 80, 45))
-        draw.text((cx + 80, cy + 405), "CRYSTALLINE INTERLOCK MATRIX", fill=(215, 80, 45), font=font_sub)
-
-        # Descriptive technical annotation card
-        draw.rectangle([(90, 1340), (w - 90, 1540)], fill=(255, 255, 255), outline=(180, 180, 180), width=2)
-        words = prompt.split()[:26]
-        line1 = " ".join(words[:13])
-        line2 = " ".join(words[13:])
-        draw.text((120, 1370), f"• {line1}", fill=(40, 40, 40), font=font_body)
-        draw.text((120, 1420), f"  {line2}", fill=(40, 40, 40), font=font_body)
+        # Soft volumetric lighting glow
+        img = img.filter(ImageFilter.SMOOTH_MORE)
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         img.save(output_path, "PNG")
         return output_path
+
+    def generate_ai_video_clip(
+        self,
+        scene_prompt: str,
+        start_image_path: str,
+        output_clip_path: str,
+        duration_sec: float = 8.0,
+        previous_interaction_id: Optional[str] = None,
+        gemini_api_key: Optional[str] = None,
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        True AI Video Generation via Google Gemini Omni Flash (`gemini-omni-flash-preview` / `gemini-omni-1.1-flash`)
+        with Multi-Turn Continuity (`previous_interaction_id`), falling back to Veo 3.1.
+        Returns: (success_bool, next_interaction_id)
+        """
+        if os.path.exists(output_clip_path) and os.path.getsize(output_clip_path) > 20000:
+            if progress_callback:
+                progress_callback(f"[OK] Reusing existing video clip: {os.path.basename(output_clip_path)}")
+            return True, previous_interaction_id
+
+        api_key = gemini_api_key or self.gemini_api_key
+        if not api_key:
+            return False, previous_interaction_id
+
+        # 1. Primary: Gemini Omni Flash Interactions API (Fast, multi-turn continuous world model)
+        try:
+            from google import genai
+
+            client = genai.Client(api_key=api_key)
+            dur_int = max(3, min(10, int(round(duration_sec))))
+            dur_str = f"{dur_int}s"
+
+            turn_label = f" (Turn extension from {previous_interaction_id[:16]}...)" if previous_interaction_id else ""
+            if progress_callback:
+                progress_callback(f"[Omni Flash] Generating AI video clip ({dur_str}){turn_label}...")
+
+            omni_models = ["gemini-omni-flash-preview", "gemini-omni-1.1-flash"]
+            for m in omni_models:
+                try:
+                    create_kwargs = {
+                        "model": m,
+                        "input": [{"type": "text", "text": scene_prompt}],
+                        "response_format": {
+                            "type": "video",
+                            "aspect_ratio": "9:16",
+                            "duration": dur_str,
+                        },
+                    }
+                    if previous_interaction_id:
+                        create_kwargs["previous_interaction_id"] = previous_interaction_id
+
+                    inter = client.interactions.create(**create_kwargs)
+                    video_bytes = None
+                    if hasattr(inter, "output_video") and inter.output_video:
+                        if getattr(inter.output_video, "data", None):
+                            d = inter.output_video.data
+                            video_bytes = base64.b64decode(d) if isinstance(d, str) else d
+                        elif getattr(inter.output_video, "uri", None):
+                            video_bytes = client.files.download(file=inter.output_video.uri)
+
+                    if video_bytes and len(video_bytes) > 10000:
+                        os.makedirs(os.path.dirname(os.path.abspath(output_clip_path)), exist_ok=True)
+                        with open(output_clip_path, "wb") as f:
+                            f.write(video_bytes)
+                        if progress_callback:
+                            progress_callback(f"[OK] [Omni Flash] Generated {len(video_bytes) // 1024} KB clip: {os.path.basename(output_clip_path)}")
+                        return True, inter.id
+                except Exception as ex:
+                    if progress_callback:
+                        progress_callback(f"[Omni Flash] Model {m} note: {ex}")
+
+        except Exception as e:
+            if progress_callback:
+                progress_callback(f"[Note] Omni Flash note: {e}")
+
+        # 2. Secondary Fallback: Veo 3.1
+        try:
+            if progress_callback:
+                progress_callback("[Veo 3.1 Fallback] Generating AI video clip...")
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=api_key)
+            image_source = None
+            if os.path.exists(start_image_path):
+                image_source = types.Image.from_file(location=start_image_path)
+
+            video_prompt = f"3D Pixar and Zack D Films style educational animation in motion: {scene_prompt}. Smooth kinematic physics motion, clear cause-and-effect action, no text, no words, no watermark."
+
+            config = types.GenerateVideosConfig(
+                number_of_videos=1,
+                duration_seconds=8,
+                aspect_ratio="9:16",
+            )
+            source = types.GenerateVideosSource(
+                prompt=video_prompt[:600],
+                image=image_source,
+            )
+            op = client.models.generate_videos(
+                model="veo-3.1-fast-generate-preview",
+                source=source,
+                config=config,
+            )
+            while not op.done:
+                time.sleep(4)
+                op = client.operations.get(op)
+
+            if op.response and op.response.generated_videos:
+                v_res = op.response.generated_videos[0].video
+                os.makedirs(os.path.dirname(os.path.abspath(output_clip_path)), exist_ok=True)
+                v_bytes = None
+                try:
+                    v_bytes = client.files.download(file=v_res)
+                except Exception:
+                    pass
+
+                if v_bytes:
+                    with open(output_clip_path, "wb") as f:
+                        f.write(v_bytes)
+                elif hasattr(v_res, "save"):
+                    v_res.save(output_clip_path)
+
+                if os.path.exists(output_clip_path) and os.path.getsize(output_clip_path) > 10000:
+                    if progress_callback:
+                        progress_callback(f"[OK] Veo 3.1 AI video clip generated: {os.path.basename(output_clip_path)}")
+                    return True, None
+        except Exception as e:
+            if progress_callback:
+                progress_callback(f"[Note] Veo fallback note: {e}")
+
+        return False, previous_interaction_id
 
     def generate_scene_image(
         self,
@@ -335,92 +473,212 @@ class AIStoryboardEngine:
         output_path: str,
         seed: int = 42,
         scene_idx: int = 0,
-        title: str = "",
+        action_desc: str = "",
         category: str = "STEM",
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> str:
         """
-        3-Tier Robust Image Generation Pipeline:
-          - Tier 1: Gemini / Imagen 3 (if API key available)
-          - Tier 2: Pollinations Flux Zero-Key API
-          - Tier 3: Procedural Offline Architectural Card
+        High-reliability 3D Pixar / Kurzgesagt keyframe image generation:
+        - Tier 1: Gemini Native Image Generation (`gemini-2.5-flash-image`)
+        - Tier 2: Pollinations standard endpoint with bottom-60px crop (removes watermark)
+        - Tier 3: Clean 3D vector emergency card (zero text, bottom 38% clean)
         """
-        # Reuse existing valid image if already present
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 8000:
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
             return output_path
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
-        # Tier 1: Gemini / Imagen 3
+        # Tier 1: Gemini Native Image Generation (gemini-2.5-flash-image)
         if self.gemini_api_key:
             try:
                 if progress_callback:
-                    progress_callback(f"[AI Storyboard] Generating Scene {scene_idx + 1} with Imagen 3...")
+                    progress_callback(f"[AI Storyboard] Generating Scene {scene_idx + 1} with Gemini Flash Image...")
                 from google import genai
                 from google.genai import types
 
                 client = genai.Client(api_key=self.gemini_api_key)
-                # Clean prompt to safe character length
                 clean_prompt = prompt[:950]
-                result = client.models.generate_images(
-                    model="imagen-3.0-generate-002",
-                    prompt=clean_prompt,
-                    config=types.GenerateImagesConfig(
-                        number_of_images=1,
-                        aspect_ratio="9:16",
-                        output_mime_type="image/png",
-                    ),
-                )
-                if result.generated_images:
-                    img_bytes = result.generated_images[0].image.image_bytes
-                    with open(output_path, "wb") as f:
-                        f.write(img_bytes)
-
-                    # Ensure exact 1080x1920
-                    with Image.open(output_path) as im:
-                        if im.size != (1080, 1920):
-                            im = im.resize((1080, 1920), Image.Resampling.LANCZOS)
-                            im.save(output_path)
-                    return output_path
+                models_to_try = [
+                    "gemini-2.5-flash-image",
+                    "gemini-3.1-flash-image-preview",
+                    "gemini-3.1-flash-image",
+                    "gemini-3-pro-image-preview",
+                ]
+                for img_model in models_to_try:
+                    try:
+                        resp = client.models.generate_content(
+                            model=img_model,
+                            contents=clean_prompt,
+                            config=types.GenerateContentConfig(
+                                response_modalities=["IMAGE"],
+                                image_config=types.ImageConfig(aspect_ratio="9:16"),
+                            ),
+                        )
+                        for part in resp.parts:
+                            if part.inline_data and part.inline_data.data:
+                                img_bytes = part.inline_data.data
+                                with open(output_path, "wb") as f:
+                                    f.write(img_bytes)
+                                with Image.open(output_path) as im:
+                                    if im.size != (1080, 1920):
+                                        im = im.resize((1080, 1920), Image.Resampling.LANCZOS)
+                                        im.save(output_path)
+                                return output_path
+                    except Exception as mod_err:
+                        if progress_callback:
+                            progress_callback(f"[AI Storyboard] Image model {img_model} note: {mod_err}")
             except Exception as e:
                 if progress_callback:
-                    progress_callback(f"[AI Storyboard] Tier 1 Imagen 3 skipped ({e}). Falling back to Tier 2 Flux...")
+                    progress_callback(f"[AI Storyboard] Tier 1 Gemini Image skipped ({e}). Using Tier 2 Engine...")
 
-        # Tier 2: Pollinations Flux Zero-Key Endpoint
-        try:
-            if progress_callback:
-                progress_callback(f"[AI Storyboard] Generating Scene {scene_idx + 1} with Flux Zero-Key Engine...")
+        # Tier 2: Pollinations Engine (Requests 1080x1980 and crops bottom 60px to strip watermark)
+        models_to_try = [None, "flux", "turbo"]
+        for m in models_to_try:
+            try:
+                time.sleep(1.0)
+                if progress_callback:
+                    m_label = m or "standard"
+                    progress_callback(f"[AI Storyboard] Generating Scene {scene_idx + 1} with {m_label.upper()} engine...")
 
-            # Clean and encode prompt
-            safe_prompt = re.sub(r'[^a-zA-Z0-9 ,.-]', '', prompt)[:280]
-            encoded = urllib.parse.quote(safe_prompt)
-            url = f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1920&model=flux&nologo=true&seed={seed}"
+                clean_p = re.sub(r'[^a-zA-Z0-9 ,.-]', '', prompt)[:260]
+                encoded = urllib.parse.quote(clean_p)
 
-            req = urllib.request.Request(url, headers={"User-Agent": "CrayonStudio/2.0"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = resp.read()
-                if len(data) > 8000:
-                    with open(output_path, "wb") as f:
-                        f.write(data)
+                if m:
+                    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1980&nologo=true&model={m}&seed={seed}"
+                else:
+                    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1980&nologo=true&seed={seed}"
 
-                    # Normalize resolution to 1080x1920
-                    with Image.open(output_path) as im:
-                        if im.size != (1080, 1920):
-                            im = im.resize((1080, 1920), Image.Resampling.LANCZOS)
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = resp.read()
+                    if len(data) > 10000:
+                        with open(output_path, "wb") as f:
+                            f.write(data)
+
+                        with Image.open(output_path) as im:
+                            if im.height >= 1980:
+                                im = im.crop((0, 0, 1080, 1920))
+                            elif im.size != (1080, 1920):
+                                im = im.resize((1080, 1920), Image.Resampling.LANCZOS)
                             im.save(output_path)
-                    return output_path
-        except Exception as e:
-            if progress_callback:
-                progress_callback(f"[AI Storyboard] Tier 2 Flux unavailable ({e}). Using Tier 3 Procedural Fallback.")
+                        return output_path
+            except Exception as ex:
+                if progress_callback:
+                    progress_callback(f"[Note] Pollinations {m or 'standard'} retry: {ex}")
 
-        # Tier 3: Procedural Offline Fallback Card
-        return self.generate_procedural_fallback_card(
-            prompt=prompt,
+        # Tier 3: Clean 3D Vector Emergency Card (Zero Text, Bottom 38% empty)
+        if progress_callback:
+            progress_callback(f"[AI Storyboard] Scene {scene_idx + 1}: Using clean textless 3D card.")
+        return self.generate_clean_fallback_card(
             output_path=output_path,
             scene_idx=scene_idx,
-            title=title or "Diagrammatic Cross-Section",
             category=category,
+            action_desc=action_desc,
         )
+
+    def _render_physics_layer(
+        self,
+        frame: np.ndarray,
+        f: int,
+        scene_type: str,
+        w: int = 1080,
+        h: int = 1920,
+    ) -> np.ndarray:
+        """
+        Draws dynamic 30fps active physics simulation layers strictly within the upper 60% of frame (y < 1180):
+          - 'water': splashing droplets, rising spray, translucent undulating wave ribbons
+          - 'crystal': growing emerald crystalline lattice facets with pulsing sparkles
+          - 'ash': floating warm mineral/ash particles with Brownian motion
+          - 'general': cinematic floating 3D bokeh orbs
+        """
+        out = frame.copy()
+        safe_max_y = 1140  # Keep strictly above subtitles (y >= 1180 is clear)
+
+        if scene_type == "water":
+            # 1. Undulating translucent foam / wave ribbon across y = 880..1060
+            wave_y = int(960 + 18.0 * math.sin(f * 0.12))
+            pts = []
+            for x in range(0, w + 40, 30):
+                dy = int(14.0 * math.sin(f * 0.10 + x * 0.015) + 8.0 * math.cos(f * 0.07 + x * 0.03))
+                pts.append((x, wave_y + dy))
+            pts.append((w, safe_max_y))
+            pts.append((0, safe_max_y))
+            overlay = out.copy()
+            cv2.fillPoly(overlay, [np.array(pts, dtype=np.int32)], (225, 175, 50))  # Translucent cyan water (BGR)
+            cv2.addWeighted(overlay, 0.28, out, 0.72, 0, out)
+
+            # 2. Dynamic splashing droplets
+            np.random.seed((f // 3) * 7 + 101)
+            for drop_id in range(16):
+                t_rel = (f % 45) / 45.0
+                vx = (drop_id - 8) * 1.8
+                vy0 = -14.0 - (drop_id % 5) * 2.0
+                x = int(540 + vx * (f % 45) + (drop_id * 37) % 200 - 100)
+                y = int(920 + vy0 * (f % 45) * 0.7 + 0.45 * math.pow((f % 45), 2))
+                if 200 < y < safe_max_y and 40 < x < w - 40:
+                    r = max(2, int(5 - 3 * t_rel))
+                    cv2.circle(out, (x, y), r, (255, 255, 255), -1)
+                    cv2.circle(out, (x, y), r + 2, (240, 210, 80), 1)
+
+        elif scene_type == "crystal":
+            # Growing interlocking emerald facets in center (cx=540, cy=640)
+            cx, cy = 540, 640
+            growth = min(1.0, f / 90.0)
+            np.random.seed(42)
+            for cid in range(12):
+                ang = cid * (math.pi / 6.0)
+                dist = int((60 + (cid % 4) * 35) * growth)
+                px = int(cx + dist * math.cos(ang))
+                py = int(cy + dist * math.sin(ang))
+                sz = int((24 + (cid % 3) * 12) * growth)
+
+                pts = np.array([
+                    [px, py - sz],
+                    [px + int(sz * 0.8), py],
+                    [px, py + sz],
+                    [px - int(sz * 0.8), py],
+                ], dtype=np.int32)
+
+                glow_col = (130, 230, 40) if cid % 2 == 0 else (190, 220, 30)  # Emerald / Lime (BGR)
+                overlay = out.copy()
+                cv2.fillPoly(overlay, [pts], glow_col)
+                cv2.addWeighted(overlay, 0.40, out, 0.60, 0, out)
+                cv2.polylines(out, [pts], True, (240, 255, 230), 2)
+
+                # Pulsing star sparkle at tip
+                if (f + cid * 5) % 18 < 6:
+                    cv2.circle(out, (px, py - sz), 4, (255, 255, 255), -1)
+
+        elif scene_type == "ash":
+            # Floating warm volcanic ash and lime particles
+            np.random.seed(1234)
+            for pid in range(28):
+                drift_x = math.sin(f * 0.05 + pid) * 25
+                y = int((950 - (f * 1.8 + pid * 38)) % 800 + 200)
+                x = int((pid * 39 + drift_x) % (w - 120) + 60)
+                if 180 < y < safe_max_y:
+                    r = (pid % 3) + 2
+                    col = (40, 160, 250) if pid % 2 == 0 else (220, 235, 245)  # Amber / Cream (BGR)
+                    cv2.circle(out, (x, y), r, col, -1)
+
+        else:
+            # Ambient cinematic 3D bokeh spheres
+            np.random.seed(999)
+            for bid in range(14):
+                bx = int((bid * 83 + math.sin(f * 0.03 + bid) * 30) % (w - 160) + 80)
+                by = int((bid * 67 + math.cos(f * 0.02 + bid) * 25) % 750 + 200)
+                br = int(18 + (bid % 4) * 8)
+                overlay = out.copy()
+                cv2.circle(overlay, (bx, by), br, (255, 220, 150), -1)
+                cv2.addWeighted(overlay, 0.12, out, 0.88, 0, out)
+
+        return out
 
     def animate_storyboard(
         self,
@@ -430,11 +688,11 @@ class AIStoryboardEngine:
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> str:
         """
-        Renders a continuous 1080x1920 30fps animation pass from scene illustrations using OpenCV:
-          - 1.2s progressive pencil sketch reveal wipe (top to bottom)
-          - 1.2s color bloom / watercolor soak
-          - 2.5D camera push-in (1.00 -> 1.05 zoom)
-          - 12-frame continuous horizontal whip-slide transition between scenes
+        Renders a continuous 1080x1920 30fps animation pass:
+          - Plays native AI video clip (from Veo or Google Flow) if available
+          - OR combines 2.5D camera push-in with 30fps active physics layers
+          - ZERO white flash: smooth 15-frame cross-dissolve between scenes
+          - Bottom 38% remains 100% clean for subtitles
         """
         w, h = 1080, 1920
         os.makedirs(os.path.dirname(os.path.abspath(output_mp4_path)), exist_ok=True)
@@ -445,117 +703,111 @@ class AIStoryboardEngine:
         if not writer.isOpened():
             raise RuntimeError(f"Could not open OpenCV VideoWriter for: {output_mp4_path}")
 
-        # Preload and resize all scene images
+        # Preload scenes and check for custom video clips
         loaded_scenes = []
         for sc in scenes_data:
-            img_path = sc.get("image_path")
-            img = None
-            if img_path and os.path.exists(img_path):
-                img = cv2.imread(img_path)
-
-            if img is None:
-                # Emergency procedural card
-                proc_path = img_path or os.path.join(os.path.dirname(output_mp4_path), f"fallback_{sc.get('scene_idx', 0)}.png")
-                self.generate_procedural_fallback_card(
-                    prompt=sc.get("prompt", "Diagram"),
-                    output_path=proc_path,
-                    scene_idx=sc.get("scene_idx", 0),
-                    title=sc.get("concept_title", ""),
-                )
-                img = cv2.imread(proc_path)
-
-            if img.shape[0] != h or img.shape[1] != w:
-                img = cv2.resize(img, (w, h), interpolation=cv2.INTER_LANCZOS4)
-
-            # Generate artistic pencil sketch on warm cream paper
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            inv = 255 - gray
-            blur = cv2.GaussianBlur(inv, (25, 25), 0)
-            sketch = cv2.divide(gray, 255 - blur, scale=256)
-            sketch_bgr = cv2.cvtColor(sketch, cv2.COLOR_GRAY2BGR)
-
-            paper = np.full((h, w, 3), (238, 244, 248), dtype=np.uint8)  # Warm cream parchment (BGR)
-            paper_sketch = cv2.multiply(paper, sketch_bgr, scale=1.0 / 255.0)
-
             dur = max(2.0, sc.get("duration", 8.0))
-            total_frames = int(round(dur * fps))
+            num_frames = int(round(dur * fps))
+            video_clip_path = sc.get("video_clip_path")
+            img_path = sc.get("image_path")
+
+            # Determine physics layer type from prompt / excerpt
+            ex_text = (sc.get("script_excerpt", "") + " " + sc.get("action_desc", "")).lower()
+            if any(k in ex_text for k in ["ocean", "wave", "water", "splash", "brine"]):
+                phys_type = "water"
+            elif any(k in ex_text for k in ["crystal", "tobermorite", "interlock", "grow"]):
+                phys_type = "crystal"
+            elif any(k in ex_text for k in ["ash", "lime", "pozzolana", "volcanic"]):
+                phys_type = "ash"
+            else:
+                phys_type = "general"
 
             loaded_scenes.append({
-                "img": img,
-                "paper_sketch": paper_sketch,
-                "paper": paper,
-                "total_frames": total_frames,
                 "scene_idx": sc.get("scene_idx", 0),
+                "duration": dur,
+                "total_frames": num_frames,
+                "video_clip_path": video_clip_path if (video_clip_path and os.path.exists(video_clip_path)) else None,
+                "img_path": img_path,
+                "phys_type": phys_type,
             })
 
         total_project_frames = sum(s["total_frames"] for s in loaded_scenes)
         frames_rendered = 0
-        wipe_len = int(fps * 1.2)  # ~36 frames
-        bloom_len = int(fps * 1.2)  # ~36 frames
-        slide_len = 12
+        trans_len = 15  # 0.5s seamless cross-dissolve
 
         t_start = time.time()
         for idx, sc in enumerate(loaded_scenes):
-            img = sc["img"]
-            paper_sketch = sc["paper_sketch"]
-            paper = sc["paper"]
             num_frames = sc["total_frames"]
-            next_img = loaded_scenes[idx + 1]["img"] if idx < len(loaded_scenes) - 1 else None
+            phys_type = sc["phys_type"]
+
+            # 1. If scene has a full AI video clip (Veo 3.1 or Google Flow import)
+            if sc["video_clip_path"]:
+                cap = cv2.VideoCapture(sc["video_clip_path"])
+                clip_frames = []
+                while True:
+                    ret, fr = cap.read()
+                    if not ret:
+                        break
+                    if fr.shape[0] != h or fr.shape[1] != w:
+                        fr = cv2.resize(fr, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                    clip_frames.append(fr)
+                cap.release()
+
+                if not clip_frames:
+                    clip_frames = [np.zeros((h, w, 3), dtype=np.uint8)]
+
+                for f in range(num_frames):
+                    fr = clip_frames[f % len(clip_frames)]
+                    writer.write(fr)
+                    frames_rendered += 1
+
+                continue
+
+            # 2. Otherwise: 3D Pixar Keyframe + Active 30fps Physics + 2.5D Push-In
+            img_path = sc["img_path"]
+            img = cv2.imread(img_path) if (img_path and os.path.exists(img_path)) else None
+            if img is None:
+                img = np.full((h, w, 3), (48, 24, 14), dtype=np.uint8)
+
+            if img.shape[0] != h or img.shape[1] != w:
+                img = cv2.resize(img, (w, h), interpolation=cv2.INTER_LANCZOS4)
+
+            # Pre-read next image for seamless cross-dissolve transition
+            next_img = None
+            if idx < len(loaded_scenes) - 1:
+                next_path = loaded_scenes[idx + 1]["img_path"]
+                if next_path and os.path.exists(next_path):
+                    next_img = cv2.imread(next_path)
+                    if next_img is not None and (next_img.shape[0] != h or next_img.shape[1] != w):
+                        next_img = cv2.resize(next_img, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
             for f in range(num_frames):
-                # 1. Sketch Wipe Phase
-                if f < wipe_len:
-                    progress = f / float(wipe_len)
-                    # Ease-out wipe line
-                    ease_p = 1.0 - math.pow(1.0 - progress, 2.5)
-                    wipe_y = int(ease_p * h)
+                # 2.5D camera push-in (1.00 -> 1.05 zoom)
+                zoom = 1.0 + 0.05 * (f / float(num_frames))
+                M = cv2.getRotationMatrix2D((540, 680), 0.0, zoom)
+                frame_canvas = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
 
-                    frame_canvas = paper.copy()
-                    if wipe_y > 0:
-                        frame_canvas[:wipe_y, :] = paper_sketch[:wipe_y, :]
+                # Render active physical motion layer (water, crystals, ash)
+                frame_canvas = self._render_physics_layer(frame_canvas, f, phys_type, w=w, h=h)
 
-                    # Golden pencil lead highlight line
-                    if 4 < wipe_y < h - 4:
-                        frame_canvas[wipe_y - 2 : wipe_y + 3, :] = (20, 180, 245)
-
-                # 2. Color Bloom Phase
-                elif f < (wipe_len + bloom_len):
-                    bloom_p = (f - wipe_len) / float(bloom_len)
-                    frame_canvas = cv2.addWeighted(img, bloom_p, paper_sketch, 1.0 - bloom_p, 0)
-
-                # 3. 2.5D Camera Push-in
-                else:
-                    zoom = 1.0 + 0.05 * (f / float(num_frames))
-                    M = cv2.getRotationMatrix2D((540, 750), 0.0, zoom)
-                    frame_canvas = cv2.warpAffine(
-                        img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT
-                    )
-
-                # 4. Continuous Whip-Slide Transition
-                if next_img is not None and f >= (num_frames - slide_len):
-                    trans_f = f - (num_frames - slide_len)
-                    t_norm = trans_f / float(slide_len)
-                    ease = t_norm * t_norm * (3.0 - 2.0 * t_norm)
-                    shift_x = int(w * ease)
-
-                    trans_canvas = np.empty_like(frame_canvas)
-                    trans_canvas[:, : w - shift_x] = frame_canvas[:, shift_x:]
-                    trans_canvas[:, w - shift_x :] = next_img[:, :shift_x]
-                    frame_canvas = trans_canvas
+                # Seamless 15-frame cross-dissolve to next scene (NO white flash!)
+                if next_img is not None and f >= (num_frames - trans_len):
+                    alpha = (f - (num_frames - trans_len)) / float(trans_len)
+                    frame_canvas = cv2.addWeighted(frame_canvas, 1.0 - alpha, next_img, alpha, 0)
 
                 writer.write(frame_canvas)
                 frames_rendered += 1
 
                 if frames_rendered % 90 == 0 and progress_callback:
                     pct = int((frames_rendered / total_project_frames) * 100)
-                    progress_callback(f"[OpenCV Engine] Animating sketch-reveal frames: {pct}% ({frames_rendered}/{total_project_frames})")
+                    progress_callback(f"[3D Pixar Engine] Rendering motion frames: {pct}% ({frames_rendered}/{total_project_frames})")
 
         writer.release()
         elapsed = time.time() - t_start
         fps_actual = frames_rendered / max(0.1, elapsed)
 
         if progress_callback:
-            progress_callback(f"[OpenCV Engine] Render complete: {frames_rendered} frames in {elapsed:.1f}s ({fps_actual:.1f} fps) -> {output_mp4_path}")
+            progress_callback(f"[3D Pixar Engine] Render complete: {frames_rendered} frames in {elapsed:.1f}s ({fps_actual:.1f} fps) -> {output_mp4_path}")
 
         return output_mp4_path
 
@@ -571,14 +823,17 @@ class AIStoryboardEngine:
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> str:
         """
-        End-to-end storyboard pipeline:
-          1. Segment script into timed scenes (~8-12s each)
-          2. Extract Style DNA from reference screenshot
-          3. Generate or retrieve 1080x1920 scene illustrations
-          4. Render 30fps continuous sketch-reveal & camera motion video
+        End-to-end True AI Video & 3D Pixar Storyboard Pipeline:
+          1. Segment script into timed scenes (~8-11s each)
+          2. Check for user-imported video clips (clip_01.mp4 ... clip_06.mp4 in storyboard/)
+          3. Generate or retrieve 1080x1920 3D Pixar illustrations
+          4. Try Veo 3.1 video generation if Gemini API key is configured
+          5. Composite 30fps animation pass with zero white flash and clean subtitle zone
         """
         os.makedirs(project_dir, exist_ok=True)
+        storyboard_dir = os.path.join(project_dir, "storyboard")
         scenes_dir = os.path.join(project_dir, "scenes")
+        os.makedirs(storyboard_dir, exist_ok=True)
         os.makedirs(scenes_dir, exist_ok=True)
 
         # 1. Recover script text
@@ -598,7 +853,7 @@ class AIStoryboardEngine:
                 script_text = "Educational storybook animation"
 
         if progress_callback:
-            progress_callback(f"🎬 Segmenting script into timed storyboard scenes...")
+            progress_callback("[Director] Choreographing 3D Pixar storyboard timeline...")
 
         # 2. Segment script into 5 to 7 timed scenes
         scenes = self.segment_script_into_scenes(
@@ -613,7 +868,7 @@ class AIStoryboardEngine:
             progress_callback=progress_callback,
         )
 
-        # 4. Formulate vivid prompts for each scene
+        # 4. Formulate vivid 3D Pixar prompts
         prompted_scenes = self.build_scene_prompts(
             scenes=scenes,
             category=category,
@@ -621,32 +876,132 @@ class AIStoryboardEngine:
             style_dna=style_dna,
         )
 
-        # 5. Generate scene illustrations
-        if progress_callback:
-            progress_callback(f"🎨 Generating {len(prompted_scenes)} high-resolution storybook illustrations...")
+        # Check for single continuous video dropped into storyboard/
+        continuous_clip = None
+        for fname in os.listdir(storyboard_dir):
+            if fname.lower().endswith(".mp4") and not fname.lower().startswith("clip_") and not fname.lower().startswith("scene_"):
+                cand = os.path.join(storyboard_dir, fname)
+                try:
+                    if os.path.getsize(cand) > 300000:
+                        continuous_clip = cand
+                        break
+                except Exception:
+                    pass
 
+        if continuous_clip:
+            if progress_callback:
+                progress_callback(f"[Director] Ingesting continuous Flow Omni video: {os.path.basename(continuous_clip)}...")
+            for sc in prompted_scenes:
+                idx_1based = sc["scene_idx"] + 1
+                target_clip = os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.mp4")
+                if not os.path.exists(target_clip) or os.path.getsize(target_clip) < 10000:
+                    cmd = [
+                        self.ffmpeg_path, "-y",
+                        "-ss", str(sc["start_time"]),
+                        "-i", continuous_clip,
+                        "-t", str(sc["duration"]),
+                        "-c", "copy",
+                        target_clip,
+                    ]
+                    try:
+                        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except Exception:
+                        pass
+
+        # Save Flow Omni multi-turn prompts and Veo prompts text
+        omni_prompts_file = os.path.join(project_dir, "flow_omni_prompts.txt")
+        veo_prompts_file = os.path.join(project_dir, "veo_prompts.txt")
+
+        omni_lines = [
+            "=== GOOGLE FLOW OMNI MULTI-TURN PROMPTS ===",
+            f"Project: {os.path.basename(project_dir)}",
+            f"Total Scenes: {len(prompted_scenes)}",
+            "Tip: In Google Flow (flow.google) or Google AI Studio, paste Round 1 to start the world model,",
+            "then paste each conversational round to extend the scene. Drop exported video(s) into 'storyboard/'!\n",
+        ]
+        for sc in prompted_scenes:
+            idx = sc["scene_idx"] + 1
+            round_hdr = "ROUND 1 (WORLD SETUP)" if idx == 1 else f"ROUND {idx} (SCENE EXTENSION)"
+            omni_lines.append(f"--- {round_hdr} ({sc['start_time']}s - {sc['end_time']}s) ---")
+            omni_lines.append(sc.get("omni_prompt", sc["prompt"]))
+            omni_lines.append("")
+
+        prompt_txt = "\n".join(omni_lines)
+        with open(omni_prompts_file, "w", encoding="utf-8") as of:
+            of.write(prompt_txt)
+        with open(veo_prompts_file, "w", encoding="utf-8") as vf:
+            vf.write(prompt_txt)
+
+        # 5. Check for imported clips & generate scene assets
+        if progress_callback:
+            progress_callback(f"[Pixar 3D] Generating {len(prompted_scenes)} 3D Pixar scenes...")
+
+        prev_interaction_id = None
         for sc in prompted_scenes:
             idx = sc["scene_idx"]
-            scene_img_path = os.path.join(scenes_dir, f"scene_{idx}.png")
-            sc["image_path"] = scene_img_path
+            idx_1based = idx + 1
 
-            self.generate_scene_image(
-                prompt=sc["prompt"],
-                output_path=scene_img_path,
-                seed=42 + idx * 7,
-                scene_idx=idx,
-                title=sc.get("concept_title", ""),
-                category=category,
-                progress_callback=progress_callback,
-            )
+            # Check for pre-rendered video clips in storyboard/ or scenes/
+            possible_clips = [
+                os.path.join(storyboard_dir, f"clip_{idx_1based:02d}.mp4"),
+                os.path.join(storyboard_dir, f"clip_{idx_1based}.mp4"),
+                os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.mp4"),
+                os.path.join(storyboard_dir, f"scene_{idx:02d}.mp4"),
+                os.path.join(scenes_dir, f"clip_{idx_1based:02d}.mp4"),
+                os.path.join(scenes_dir, f"scene_{idx}.mp4"),
+            ]
+            custom_clip = next((cp for cp in possible_clips if os.path.exists(cp) and os.path.getsize(cp) > 20000), None)
 
-        # Save storyboard metadata for review
+            # Standardized scene image paths
+            sb_img_path = os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.png")
+            sc_img_path = os.path.join(scenes_dir, f"scene_{idx}.png")
+            sc["image_path"] = sb_img_path
+
+            if custom_clip:
+                if progress_callback:
+                    progress_callback(f"[OK] Found custom AI video clip: {os.path.basename(custom_clip)}")
+                sc["video_clip_path"] = custom_clip
+            else:
+                # Generate 3D Pixar keyframe
+                self.generate_scene_image(
+                    prompt=sc["prompt"],
+                    output_path=sb_img_path,
+                    seed=42 + idx * 11,
+                    scene_idx=idx,
+                    action_desc=sc.get("action_desc", ""),
+                    category=category,
+                    progress_callback=progress_callback,
+                )
+                # Mirror in scenes/ for compatibility
+                try:
+                    shutil.copyfile(sb_img_path, sc_img_path)
+                except Exception:
+                    pass
+
+                # Try Gemini Omni Flash video generation with multi-turn continuity
+                omni_clip_target = os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.mp4")
+                if self.gemini_api_key:
+                    video_prompt = sc.get("omni_prompt", sc["prompt"])
+                    ok, next_id = self.generate_ai_video_clip(
+                        scene_prompt=video_prompt,
+                        start_image_path=sb_img_path,
+                        output_clip_path=omni_clip_target,
+                        duration_sec=sc["duration"],
+                        previous_interaction_id=prev_interaction_id,
+                        progress_callback=progress_callback,
+                    )
+                    if ok:
+                        sc["video_clip_path"] = omni_clip_target
+                        if next_id:
+                            prev_interaction_id = next_id
+
+        # Save metadata
         with open(os.path.join(project_dir, "storyboard.json"), "w", encoding="utf-8") as f:
             json.dump(prompted_scenes, f, indent=2)
 
         # 6. Animate scenes via OpenCV
         if progress_callback:
-            progress_callback(f"⚡ Compositing progressive sketch-reveal animation...")
+            progress_callback("[Compositor] Compositing continuous 3D Pixar animation pass...")
 
         self.animate_storyboard(
             scenes_data=prompted_scenes,

@@ -1200,6 +1200,20 @@ class CrayonStudioApp(QMainWindow):
         exec_card.setProperty("class", "card")
         ec_layout = QVBoxLayout(exec_card)
 
+        # AI Video (Gemini Omni Flash & Google Flow) Integration Bar
+        flow_row = QHBoxLayout()
+        self.btn_copy_veo_prompts = QPushButton("📋 Copy Flow Omni Multi-Turn Prompts")
+        self.btn_copy_veo_prompts.setStyleSheet("font-size: 12px; font-weight: bold; background-color: #1A365D; color: #63B3ED; padding: 7px 14px;")
+        self.btn_copy_veo_prompts.clicked.connect(self._on_copy_veo_prompts)
+
+        self.btn_open_storyboard_folder = QPushButton("📂 Import Custom Video Clips (storyboard/)")
+        self.btn_open_storyboard_folder.setStyleSheet("font-size: 12px; font-weight: bold; background-color: #44337A; color: #D6BCFA; padding: 7px 14px;")
+        self.btn_open_storyboard_folder.clicked.connect(self._on_open_storyboard_folder)
+
+        flow_row.addWidget(self.btn_copy_veo_prompts, stretch=1)
+        flow_row.addWidget(self.btn_open_storyboard_folder, stretch=1)
+        ec_layout.addLayout(flow_row)
+
         btn_row = QHBoxLayout()
         self.btn_save_draft = QPushButton("💾 Save Project Draft")
         self.btn_save_draft.clicked.connect(self._on_save_project_draft)
@@ -2373,6 +2387,87 @@ class CrayonStudioApp(QMainWindow):
             os.startfile(proj_dir)
         except Exception as e:
             QMessageBox.critical(self, "Error Opening Folder", f"Could not open folder:\n{e}")
+
+    def _on_copy_veo_prompts(self):
+        script = self.text_script.toPlainText().strip()
+        if not script:
+            QMessageBox.warning(self, "No Script", "Please enter or generate a script first.")
+            return
+
+        slug = self.active_project_slug
+        proj_dir = os.path.join(PROJECTS_DIR, slug)
+        os.makedirs(proj_dir, exist_ok=True)
+        words_json = os.path.join(proj_dir, "words_timestamp.json")
+
+        from core.storyboard_engine import AIStoryboardEngine
+        engine = AIStoryboardEngine(config_path="config.json")
+        scenes = engine.segment_script_into_scenes(script, words_json, target_count=6)
+        prompted = engine.build_scene_prompts(
+            scenes=scenes,
+            category=self.combo_category.currentText(),
+            visual_engine=self.combo_engine.currentData() or "2D_Crayon",
+        )
+
+        lines = [
+            "=== GOOGLE FLOW OMNI MULTI-TURN PROMPTS (9:16 VERTICAL, 3D PIXAR STYLE) ===",
+            f"Project: {slug}",
+            f"Total Scenes: {len(prompted)}",
+            "How to use in Google Flow (flow.google) or Google AI Studio:",
+            "  1. Start a new session with Round 1 (World Setup).",
+            "  2. In the same conversation, submit Round 2, Round 3, etc. to extend the scene with full visual continuity!",
+            "  3. Drop either the exported individual clips (clip_01.mp4 ... clip_06.mp4) OR the single full extended video (flow_omni.mp4)",
+            "     directly into your project's 'storyboard/' folder before clicking Render!\n",
+        ]
+        for sc in prompted:
+            idx = sc["scene_idx"] + 1
+            round_hdr = "ROUND 1 (WORLD SETUP)" if idx == 1 else f"ROUND {idx} (SCENE EXTENSION)"
+            lines.append(f"--- {round_hdr} ({sc['start_time']}s - {sc['end_time']}s) ---")
+            lines.append(sc.get("omni_prompt", sc["prompt"]))
+            lines.append("")
+
+        prompt_text = "\n".join(lines)
+        QApplication.clipboard().setText(prompt_text)
+
+        omni_file = os.path.join(proj_dir, "flow_omni_prompts.txt")
+        veo_file = os.path.join(proj_dir, "veo_prompts.txt")
+        try:
+            with open(omni_file, "w", encoding="utf-8") as f:
+                f.write(prompt_text)
+            with open(veo_file, "w", encoding="utf-8") as f:
+                f.write(prompt_text)
+        except Exception:
+            pass
+
+        self.terminal_log.append(
+            f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 📋 Copied {len(prompted)} Flow Omni Multi-Turn prompts to clipboard & saved to {omni_file}!"
+        )
+        QMessageBox.information(
+            self,
+            "Flow Omni Prompts Copied",
+            f"✓ {len(prompted)} timestamped Flow Omni Multi-Turn prompts copied to clipboard!\n\n"
+            f"Saved to: {omni_file}\n\n"
+            "You can now paste them directly into flow.google or Google AI Studio.",
+        )
+
+    def _on_open_storyboard_folder(self):
+        slug = self.active_project_slug
+        proj_dir = os.path.join(PROJECTS_DIR, slug)
+        sb_dir = os.path.join(proj_dir, "storyboard")
+        os.makedirs(sb_dir, exist_ok=True)
+        try:
+            if sys.platform == "win32":
+                os.startfile(sb_dir)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", sb_dir])
+            else:
+                subprocess.Popen(["xdg-open", sb_dir])
+        except Exception as e:
+            QMessageBox.critical(self, "Error Opening Folder", f"Could not open storyboard folder:\n{e}")
+
+        self.terminal_log.append(
+            f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 📂 Opened storyboard folder: {sb_dir}\n"
+            "Drop custom video clips (clip_01.mp4 ... clip_06.mp4) or full extended video (flow_omni.mp4) here."
+        )
 
     def _on_mark_ready(self):
         if not self.active_project_id:
