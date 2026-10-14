@@ -20,8 +20,10 @@ CREATE TABLE IF NOT EXISTS research_trends (
     topic TEXT NOT NULL,
     source_url TEXT,
     views INTEGER DEFAULT 0,
-    content_gaps TEXT,
     confusion_points TEXT,
+    complaints TEXT,
+    praises TEXT,
+    content_gaps TEXT,
     date_scraped DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

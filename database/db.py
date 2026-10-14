@@ -40,6 +40,14 @@ def init_db(db_path: Optional[str] = None) -> None:
         if "visual_engine" not in columns:
             cursor.execute("ALTER TABLE projects ADD COLUMN visual_engine TEXT DEFAULT '2D_Crayon'")
 
+        # Migration 1B: Ensure complaints and praises columns exist in research_trends
+        cursor.execute("PRAGMA table_info(research_trends)")
+        rt_cols = [row["name"] for row in cursor.fetchall()]
+        if "complaints" not in rt_cols:
+            cursor.execute("ALTER TABLE research_trends ADD COLUMN complaints TEXT DEFAULT ''")
+        if "praises" not in rt_cols:
+            cursor.execute("ALTER TABLE research_trends ADD COLUMN praises TEXT DEFAULT ''")
+
         # Migration 2: Verify category constraint allows 'Engineering' and 'How It''s Made'
         try:
             conn.execute("SAVEPOINT check_cat_migration")
@@ -222,6 +230,8 @@ def save_trend_insight(
     views: int,
     content_gaps: str,
     confusion_points: str,
+    complaints: str = "",
+    praises: str = "",
     db_path: Optional[str] = None,
 ) -> int:
     """Insert a scraped trend and audience insight record."""
@@ -230,10 +240,10 @@ def save_trend_insight(
         cursor.execute(
             """
             INSERT INTO research_trends (
-                topic, source_url, views, content_gaps, confusion_points
-            ) VALUES (?, ?, ?, ?, ?)
+                topic, source_url, views, content_gaps, confusion_points, complaints, praises
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (topic, source_url, views, content_gaps, confusion_points),
+            (topic, source_url, views, content_gaps, confusion_points, complaints, praises),
         )
         conn.commit()
         return cursor.lastrowid or 0

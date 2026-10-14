@@ -62,7 +62,11 @@ from core.blender_orchestrator import BlenderOrchestrator
 from core.engine_router import VisualEngineRouter
 from core.ffmpeg_compositor import FFmpegCompositor
 from core.foley_mixer import generate_foley_track
-from core.scraper import search_trends_and_comments
+from core.scraper import (
+    generate_content_suggestions,
+    scan_competitor_channel,
+    search_trends_and_comments,
+)
 from core.timestamp_aligner import extract_word_timestamps
 from core.uploader import queue_tiktok_draft, upload_to_youtube
 from core.visual_critic import generate_and_verify_snapshots
@@ -350,23 +354,40 @@ QLabel.badge {
 # ASYNCHRONOUS WORKER THREADS
 # =====================================================================
 class ScraperWorker(QThread):
-    """Background worker for YouTube competitor and comment trend extraction."""
+    """Background worker for YouTube competitor search, channel scanning, and comment intelligence."""
 
     progress = Signal(str)
-    finished = Signal(list)
+    finished = Signal(dict)
     error = Signal(str)
 
-    def __init__(self, query: str, max_results: int = 5, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        query: str,
+        max_results: int = 5,
+        api_key: Optional[str] = None,
+        mode: str = "keyword",
+    ):
         super().__init__()
         self.query = query
         self.max_results = max_results
         self.api_key = api_key
+        self.mode = mode
 
     def run(self):
         try:
-            self.progress.emit(f"Scanning competitor videos for '{self.query}'...")
-            trends = search_trends_and_comments(self.query, self.max_results, self.api_key)
-            self.finished.emit(trends)
+            if self.mode == "channel":
+                self.progress.emit(f"📡 Scanning competitor channel '{self.query}' for audience reactions...")
+                trends = scan_competitor_channel(self.query, self.max_results)
+            else:
+                self.progress.emit(f"🔍 Mining competitor videos & comment threads for '{self.query}'...")
+                trends = search_trends_and_comments(self.query, self.max_results, self.api_key)
+
+            self.progress.emit("💡 Synthesizing high-retention content suggestions & engineered hooks...")
+            suggestions = generate_content_suggestions(trends)
+            self.finished.emit({
+                "trends": trends,
+                "suggestions": suggestions,
+            })
         except Exception as e:
             logger.error("Scraper worker failed: %s", e)
             self.error.emit(str(e))
@@ -812,64 +833,117 @@ class CrayonStudioApp(QMainWindow):
     # TAB 1: TREND RESEARCH
     # =================================================================
     def _build_tab_research(self) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        # Wrap entire tab in a smooth QScrollArea so user can scroll through search, table, and suggestion deck
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
-        # Search Card
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(14)
+
+        # 1. Search & Competitor Channel Toolbar Card
         search_card = QFrame()
         search_card.setProperty("class", "card")
-        sc_layout = QHBoxLayout(search_card)
+        sc_layout = QVBoxLayout(search_card)
+        sc_layout.setContentsMargins(12, 12, 12, 12)
+        sc_layout.setSpacing(10)
+
+        # Row 1: Mode selector + Search Input + Analyze Button
+        input_row = QHBoxLayout()
+        input_row.setSpacing(8)
+
+        self.combo_search_mode = QComboBox()
+        self.combo_search_mode.addItem("🔍 Niche Topic / Keywords", "keyword")
+        self.combo_search_mode.addItem("📡 Competitor Channel (@channel)", "channel")
+        self.combo_search_mode.currentIndexChanged.connect(self._on_search_mode_changed)
 
         self.trend_search_input = QLineEdit()
         self.trend_search_input.setPlaceholderText(
-            "Search viral niche (e.g. 'why Roman concrete heals', 'bank vault heist flaw', 'vacuum experiment')..."
+            "Search viral niche (e.g. 'why Roman concrete heals', 'piezoelectric lighter', 'vacuum experiment')..."
         )
         self.trend_search_input.returnPressed.connect(self._on_search_trends)
 
-        self.btn_analyze = QPushButton("⚡ Analyze Competitors")
+        self.btn_analyze = QPushButton("⚡ Analyze & Mine Comments")
         self.btn_analyze.setProperty("class", "primary")
         self.btn_analyze.clicked.connect(self._on_search_trends)
 
-        sc_layout.addWidget(self.trend_search_input, stretch=4)
-        sc_layout.addWidget(self.btn_analyze, stretch=1)
+        input_row.addWidget(self.combo_search_mode, stretch=2)
+        input_row.addWidget(self.trend_search_input, stretch=5)
+        input_row.addWidget(self.btn_analyze, stretch=2)
+        sc_layout.addLayout(input_row)
+
+        # Row 2: Inspiration Presets (Topics & Competitor Channels)
+        chips_layout = QHBoxLayout()
+        chips_layout.setSpacing(6)
+        lbl_presets = QLabel("Quick Presets:")
+        lbl_presets.setStyleSheet("font-size: 11px; color: #9AA0A6; font-weight: bold;")
+        chips_layout.addWidget(lbl_presets)
+
+        presets = [
+            ("⚡ Piezo Ignition", "piezoelectric lighter", "keyword"),
+            ("🏛️ Roman Concrete", "why Roman concrete heals", "keyword"),
+            ("⚙️ Brushless Motor", "brushless electric motor working", "keyword"),
+            ("🏦 Bank Vault Flaw", "bank vault heist flaws", "keyword"),
+            ("📡 @TheActionLab", "@TheActionLab", "channel"),
+            ("📡 @Veritasium", "@Veritasium", "channel"),
+        ]
+        for label, val, mode in presets:
+            btn_chip = QPushButton(label)
+            btn_chip.setStyleSheet(
+                "QPushButton { background-color: #242933; border: 1px solid #3B4252; "
+                "border-radius: 12px; padding: 3px 8px; font-size: 10px; color: #D8DEE9; } "
+                "QPushButton:hover { background-color: #383E4A; border-color: #0078D4; color: #FFFFFF; }"
+            )
+            btn_chip.clicked.connect(lambda chk, v=val, m=mode: self._on_search_preset(v, m))
+            chips_layout.addWidget(btn_chip)
+
+        chips_layout.addStretch()
+        sc_layout.addLayout(chips_layout)
         layout.addWidget(search_card)
 
-        # Results Table Card
+        # 2. Audience Friction & Sentiment Intelligence Table Card
         table_card = QFrame()
         table_card.setProperty("class", "card")
         tc_layout = QVBoxLayout(table_card)
+        tc_layout.setContentsMargins(12, 12, 12, 12)
+        tc_layout.setSpacing(10)
 
         tc_header = QHBoxLayout()
-        tc_title = QLabel("Audience Friction Analysis & Content Gaps")
+        tc_title = QLabel("Audience Friction Analysis & Comment Intelligence")
         tc_title.setStyleSheet("font-weight: bold; font-size: 14px; color: #FFFFFF;")
-        self.lbl_trend_status = QLabel("Ready to analyze.")
+        self.lbl_trend_status = QLabel("Ready to analyze. Select a mode or preset above.")
         self.lbl_trend_status.setStyleSheet("color: #9AA0A6;")
         tc_header.addWidget(tc_title)
         tc_header.addStretch()
         tc_header.addWidget(self.lbl_trend_status)
         tc_layout.addLayout(tc_header)
 
-        self.table_trends = QTableWidget(0, 4)
+        self.table_trends = QTableWidget(0, 6)
         self.table_trends.setHorizontalHeaderLabels([
             "Competitor Topic / Video Title",
             "Views",
-            "Confusion Points (Questions: ? / Why)",
-            "Content Gaps (Requests: Part 2 / Skipped)",
+            "❓ Top Confusion (? / Why)",
+            "⚠️ Complaints & Flaws (What They Skipped)",
+            "🌟 Praises (What Viewers Loved)",
+            "💡 Content Gaps (Part 2 Requests)",
         ])
         self.table_trends.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table_trends.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table_trends.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.table_trends.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table_trends.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table_trends.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
         self.table_trends.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_trends.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_trends.setAlternatingRowColors(True)
+        self.table_trends.setMinimumHeight(220)
         tc_layout.addWidget(self.table_trends)
 
         # Action bar
         act_layout = QHBoxLayout()
-        self.btn_use_topic = QPushButton("📥 Use as Studio Topic →")
+        self.btn_use_topic = QPushButton("📥 Use Selected Competitor Topic →")
         self.btn_use_topic.setProperty("class", "primary")
         self.btn_use_topic.clicked.connect(self._on_use_as_topic)
 
@@ -886,7 +960,34 @@ class CrayonStudioApp(QMainWindow):
         tc_layout.addLayout(act_layout)
 
         layout.addWidget(table_card)
-        return widget
+
+        # 3. AI-Generated Content Concepts Deck Card
+        deck_card = QFrame()
+        deck_card.setProperty("class", "card")
+        dc_layout = QVBoxLayout(deck_card)
+        dc_layout.setContentsMargins(12, 12, 12, 12)
+        dc_layout.setSpacing(10)
+
+        dh_row = QHBoxLayout()
+        deck_title = QLabel("🎯 AI Content Suggestions (Pre-Engineered to Outperform Competitors)")
+        deck_title.setStyleSheet("font-weight: bold; font-size: 14px; color: #FFFFFF;")
+        self.lbl_sugg_count = QLabel("Run search or channel scan to generate concepts.")
+        self.lbl_sugg_count.setStyleSheet("color: #9AA0A6;")
+        dh_row.addWidget(deck_title)
+        dh_row.addStretch()
+        dh_row.addWidget(self.lbl_sugg_count)
+        dc_layout.addLayout(dh_row)
+
+        self.sugg_container = QWidget()
+        self.sugg_layout = QVBoxLayout(self.sugg_container)
+        self.sugg_layout.setContentsMargins(0, 4, 0, 4)
+        self.sugg_layout.setSpacing(10)
+        dc_layout.addWidget(self.sugg_container)
+
+        layout.addWidget(deck_card)
+
+        scroll.setWidget(container)
+        return scroll
 
     # =================================================================
     # TAB 2: PRODUCTION STUDIO
@@ -1482,30 +1583,54 @@ class CrayonStudioApp(QMainWindow):
         self.audio_output.setVolume(value / 100.0)
 
     # =================================================================
-    # TAB 1 LOGIC: TREND RESEARCH
+    # TAB 1 LOGIC: TREND RESEARCH & COMPETITOR COMMENT MINING
     # =================================================================
+    def _on_search_mode_changed(self, idx: int):
+        mode = self.combo_search_mode.currentData()
+        if mode == "channel":
+            self.trend_search_input.setPlaceholderText(
+                "Scan competitor channel (e.g. '@TheActionLab', '@Veritasium', '@HowThingsWork', or channel URL)..."
+            )
+        else:
+            self.trend_search_input.setPlaceholderText(
+                "Search viral niche (e.g. 'why Roman concrete heals', 'piezoelectric lighter', 'vacuum experiment')..."
+            )
+
+    def _on_search_preset(self, text: str, mode: str):
+        idx = self.combo_search_mode.findData(mode)
+        if idx >= 0:
+            self.combo_search_mode.setCurrentIndex(idx)
+        self.trend_search_input.setText(text)
+        self._on_search_trends()
+
     def _on_search_trends(self):
         query = self.trend_search_input.text().strip()
+        mode = self.combo_search_mode.currentData() or "keyword"
         if not query:
-            query = "why Roman concrete heals"
+            query = "@TheActionLab" if mode == "channel" else "why Roman concrete heals"
             self.trend_search_input.setText(query)
 
         self.btn_analyze.setEnabled(False)
-        self.lbl_trend_status.setText("Analyzing competitor videos & viewer questions...")
+        target_desc = f"channel '{query}'" if mode == "channel" else f"'{query}'"
+        self.lbl_trend_status.setText(f"Mining competitor comments & audience friction for {target_desc}...")
         self.lbl_trend_status.setStyleSheet("color: #0078D4; font-weight: bold;")
 
         self.scraper_thread = ScraperWorker(
             query=query,
             max_results=5,
             api_key=self.config.get("youtube_api_key"),
+            mode=mode,
         )
+        self.scraper_thread.progress.connect(lambda msg: self.lbl_trend_status.setText(msg))
         self.scraper_thread.finished.connect(self._on_trends_extracted)
         self.scraper_thread.error.connect(self._on_trends_error)
         self.scraper_thread.start()
 
-    def _on_trends_extracted(self, trends: List[Dict[str, Any]]):
+    def _on_trends_extracted(self, payload: Dict[str, Any]):
         self.btn_analyze.setEnabled(True)
-        self.lbl_trend_status.setText(f"Found {len(trends)} high-engagement competitor topics.")
+        trends = payload.get("trends", [])
+        suggestions = payload.get("suggestions", [])
+        self.lbl_trend_status.setText(f"Found {len(trends)} competitor videos. Generated {len(suggestions)} content concepts.")
         self.lbl_trend_status.setStyleSheet("color: #107C41; font-weight: bold;")
 
         self.table_trends.setRowCount(0)
@@ -1515,10 +1640,125 @@ class CrayonStudioApp(QMainWindow):
             views = item.get("views", 0)
             self.table_trends.setItem(row_idx, 1, QTableWidgetItem(f"{views:,}"))
             self.table_trends.setItem(row_idx, 2, QTableWidgetItem(str(item.get("confusion_points", ""))))
-            self.table_trends.setItem(row_idx, 3, QTableWidgetItem(str(item.get("content_gaps", ""))))
+            self.table_trends.setItem(row_idx, 3, QTableWidgetItem(str(item.get("complaints", ""))))
+            self.table_trends.setItem(row_idx, 4, QTableWidgetItem(str(item.get("praises", ""))))
+            self.table_trends.setItem(row_idx, 5, QTableWidgetItem(str(item.get("content_gaps", ""))))
 
         if trends:
             self.table_trends.selectRow(0)
+
+        self._populate_suggestion_deck(suggestions)
+
+    def _populate_suggestion_deck(self, suggestions: List[Dict[str, Any]]):
+        """Build interactive cards for AI content suggestions."""
+        while self.sugg_layout.count():
+            item = self.sugg_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not suggestions:
+            empty_lbl = QLabel("No content concepts generated. Run an analysis above to populate suggestions.")
+            empty_lbl.setStyleSheet("color: #777777; font-style: italic; padding: 12px;")
+            self.sugg_layout.addWidget(empty_lbl)
+            self.lbl_sugg_count.setText("0 Concepts available")
+            return
+
+        self.lbl_sugg_count.setText(f"{len(suggestions)} AI Content Concepts Ready")
+
+        for sugg in suggestions:
+            card = QFrame()
+            card.setStyleSheet(
+                "QFrame { background-color: #1E222A; border: 1px solid #333842; "
+                "border-radius: 8px; padding: 10px; }"
+            )
+            c_layout = QVBoxLayout(card)
+            c_layout.setContentsMargins(10, 8, 10, 8)
+            c_layout.setSpacing(6)
+
+            # Header: Title + Engine Badge + Category Badge
+            h_row = QHBoxLayout()
+            lbl_title = QLabel(sugg.get("title", "Concept"))
+            lbl_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #FFFFFF;")
+
+            eng = sugg.get("recommended_engine", "2D_Crayon")
+            eng_bg = "#FF6B6B" if eng == "3D_Teardown" else "#0078D4"
+            eng_txt = "3D TEARDOWN" if eng == "3D_Teardown" else "2D CRAYON"
+            lbl_eng = QLabel(eng_txt)
+            lbl_eng.setStyleSheet(
+                f"background-color: {eng_bg}; color: #FFFFFF; font-size: 9px; font-weight: bold; "
+                "padding: 2px 6px; border-radius: 3px;"
+            )
+
+            lbl_cat = QLabel(sugg.get("category", "STEM").upper())
+            lbl_cat.setStyleSheet(
+                "background-color: #2D3139; color: #9AA0A6; font-size: 9px; font-weight: bold; "
+                "padding: 2px 6px; border-radius: 3px;"
+            )
+
+            h_row.addWidget(lbl_title)
+            h_row.addStretch()
+            h_row.addWidget(lbl_cat)
+            h_row.addWidget(lbl_eng)
+            c_layout.addLayout(h_row)
+
+            # Hook Preview
+            hook_text = sugg.get("hook", "")
+            lbl_hook = QLabel(f"🎣 Opening Hook: \"{hook_text}\"")
+            lbl_hook.setStyleSheet("color: #64D2FF; font-size: 11px; font-style: italic;")
+            lbl_hook.setWordWrap(True)
+            c_layout.addWidget(lbl_hook)
+
+            # Competitive Advantage Note
+            adv_text = sugg.get("competitive_advantage", "")
+            lbl_adv = QLabel(f"⚡ Competitive Edge: {adv_text}")
+            lbl_adv.setStyleSheet("color: #34D399; font-size: 10px;")
+            lbl_adv.setWordWrap(True)
+            c_layout.addWidget(lbl_adv)
+
+            # Action button
+            b_row = QHBoxLayout()
+            b_row.addStretch()
+            btn_use = QPushButton("🚀 Use This Concept in Studio →")
+            btn_use.setProperty("class", "primary")
+            btn_use.clicked.connect(lambda chk, s=sugg: self._on_use_suggestion(s))
+            b_row.addWidget(btn_use)
+            c_layout.addLayout(b_row)
+
+            self.sugg_layout.addWidget(card)
+
+    def _on_use_suggestion(self, sugg: Dict[str, Any]):
+        """Load selected AI content suggestion into Production Studio."""
+        title = sugg.get("title", "")
+        cat = sugg.get("category", "STEM")
+        engine = sugg.get("recommended_engine", "2D_Crayon")
+        hook = sugg.get("hook", "")
+        confusion = sugg.get("confusion_focus", "")
+        gap = sugg.get("complaint_resolved", "")
+
+        self.input_title.setText(title)
+
+        cat_idx = self.combo_category.findText(cat)
+        if cat_idx >= 0:
+            self.combo_category.setCurrentIndex(cat_idx)
+
+        eng_idx = self.combo_engine.findData(engine)
+        if eng_idx >= 0:
+            self.combo_engine.setCurrentIndex(eng_idx)
+
+        # Generate full script starting with pre-crafted hook
+        new_script = modify_script(
+            script_text="",
+            prompt=f"Create hook: {hook}. Address confusion: {confusion}. Include gap: {gap}",
+            category=cat,
+            target_duration=self.spin_duration.value(),
+            tiktok_product=self.combo_product.currentText(),
+            topic=title,
+        )
+        self.text_script.setPlainText(new_script)
+
+        self.tab_widget.setCurrentIndex(1)
+        self.status_bar.showMessage(f"AI Concept '{title}' transferred to Production Studio (Engine: {engine}).", 4000)
+        self.terminal_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 🎯 Transferred concept '{title}' to Studio ({engine}).")
 
     def _on_trends_error(self, err: str):
         self.btn_analyze.setEnabled(True)
@@ -1532,32 +1772,40 @@ class CrayonStudioApp(QMainWindow):
             return
 
         topic = self.table_trends.item(row, 0).text()
-        confusion = self.table_trends.item(row, 2).text()
-        gap = self.table_trends.item(row, 3).text()
+        confusion = self.table_trends.item(row, 2).text() if self.table_trends.columnCount() > 2 else ""
+        complaint = self.table_trends.item(row, 3).text() if self.table_trends.columnCount() > 3 else ""
+        gap = self.table_trends.item(row, 5).text() if self.table_trends.columnCount() > 5 else ""
 
-        # Deduce category
+        # Deduce category & engine
         topic_lower = topic.lower()
         if any(w in topic_lower for w in ["machine", "engine", "gear", "device", "hardware", "motor", "tool", "hydraulic", "lighter", "piezo"]):
             cat_idx = self.combo_category.findText("Engineering")
+            eng_idx = self.combo_engine.findData("3D_Teardown")
         elif any(w in topic_lower for w in ["how it's made", "how it is made", "manufacturing", "factory", "assembly"]):
             cat_idx = self.combo_category.findText("How It's Made")
+            eng_idx = self.combo_engine.findData("3D_Teardown")
         elif "heist" in topic_lower or "vault" in topic_lower or "escape" in topic_lower:
             cat_idx = self.combo_category.findText("Escape/Heist")
+            eng_idx = self.combo_engine.findData("2D_Crayon")
         elif "concrete" in topic_lower or "bridge" in topic_lower or "building" in topic_lower:
             cat_idx = self.combo_category.findText("Architecture")
+            eng_idx = self.combo_engine.findData("2D_Crayon")
         elif "brain" in topic_lower or "psychology" in topic_lower or "illusion" in topic_lower:
             cat_idx = self.combo_category.findText("Psychology")
+            eng_idx = self.combo_engine.findData("2D_Crayon")
         else:
             cat_idx = self.combo_category.findText("STEM")
+            eng_idx = self.combo_engine.findData("2D_Crayon")
 
         if cat_idx >= 0:
             self.combo_category.setCurrentIndex(cat_idx)
+        if eng_idx >= 0:
+            self.combo_engine.setCurrentIndex(eng_idx)
 
         self.input_title.setText(topic)
-        # Generate clean script hook based on confusion & content gap
         new_script = modify_script(
             script_text="",
-            prompt=f"Create hook addressing: {confusion}. Include gap: {gap}",
+            prompt=f"Create hook addressing confusion: {confusion}. Fix competitor flaw: {complaint}. Include gap: {gap}",
             category=self.combo_category.currentText(),
             target_duration=self.spin_duration.value(),
             tiktok_product=self.combo_product.currentText(),
@@ -1565,7 +1813,6 @@ class CrayonStudioApp(QMainWindow):
         )
         self.text_script.setPlainText(new_script)
 
-        # Switch to Tab 2
         self.tab_widget.setCurrentIndex(1)
         self.status_bar.showMessage(f"Topic '{topic}' transferred to Production Studio.", 4000)
 
@@ -1579,7 +1826,9 @@ class CrayonStudioApp(QMainWindow):
         views_str = self.table_trends.item(row, 1).text().replace(",", "")
         views = int(views_str) if views_str.isdigit() else 0
         confusion = self.table_trends.item(row, 2).text()
-        gap = self.table_trends.item(row, 3).text()
+        complaints = self.table_trends.item(row, 3).text()
+        praises = self.table_trends.item(row, 4).text()
+        gap = self.table_trends.item(row, 5).text()
 
         row_id = db.save_trend_insight(
             topic=topic,
@@ -1587,8 +1836,10 @@ class CrayonStudioApp(QMainWindow):
             views=views,
             content_gaps=gap,
             confusion_points=confusion,
+            complaints=complaints,
+            praises=praises,
         )
-        QMessageBox.information(self, "Trend Saved", f"Saved trend '{topic}' to SQLite (ID: {row_id}).")
+        QMessageBox.information(self, "Trend Saved", f"Saved trend '{topic}' with comment intelligence to SQLite (ID: {row_id}).")
 
     def _on_load_saved_trends(self):
         trends = db.get_all_trends()
@@ -1603,8 +1854,12 @@ class CrayonStudioApp(QMainWindow):
             views = item.get("views", 0)
             self.table_trends.setItem(row_idx, 1, QTableWidgetItem(f"{views:,}"))
             self.table_trends.setItem(row_idx, 2, QTableWidgetItem(str(item.get("confusion_points", ""))))
-            self.table_trends.setItem(row_idx, 3, QTableWidgetItem(str(item.get("content_gaps", ""))))
+            self.table_trends.setItem(row_idx, 3, QTableWidgetItem(str(item.get("complaints", ""))))
+            self.table_trends.setItem(row_idx, 4, QTableWidgetItem(str(item.get("praises", ""))))
+            self.table_trends.setItem(row_idx, 5, QTableWidgetItem(str(item.get("content_gaps", ""))))
 
+        suggestions = generate_content_suggestions(trends)
+        self._populate_suggestion_deck(suggestions)
         self.lbl_trend_status.setText(f"Loaded {len(trends)} trends from SQLite.")
 
     # =================================================================
