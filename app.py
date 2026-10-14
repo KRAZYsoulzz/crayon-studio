@@ -1192,6 +1192,11 @@ class CrayonStudioApp(QMainWindow):
         btn_row.addWidget(self.btn_save_draft)
         btn_row.addWidget(self.btn_generate_pipeline, stretch=2)
         btn_row.addWidget(self.btn_render_blender, stretch=1)
+
+        self.btn_open_folder_tab2 = QPushButton("📂 Open Folder")
+        self.btn_open_folder_tab2.clicked.connect(self._on_open_project_folder)
+        btn_row.addWidget(self.btn_open_folder_tab2)
+
         ec_layout.addLayout(btn_row)
 
         self.progress_bar = QProgressBar()
@@ -1294,6 +1299,21 @@ class CrayonStudioApp(QMainWindow):
         btn_ctrl_row.addWidget(vol_lbl)
         btn_ctrl_row.addWidget(self.slider_volume)
         tc_layout.addLayout(btn_ctrl_row)
+
+        # Export & Project Folder Controls
+        exp_row = QHBoxLayout()
+        self.btn_export_video = QPushButton("📥 Download / Export MP4")
+        self.btn_export_video.setProperty("class", "primary")
+        self.btn_export_video.setStyleSheet("font-weight: bold; padding: 6px 12px;")
+        self.btn_export_video.clicked.connect(self._on_export_video)
+
+        self.btn_open_folder = QPushButton("📂 Open Project Folder")
+        self.btn_open_folder.setStyleSheet("padding: 6px 12px;")
+        self.btn_open_folder.clicked.connect(self._on_open_project_folder)
+
+        exp_row.addWidget(self.btn_export_video)
+        exp_row.addWidget(self.btn_open_folder)
+        tc_layout.addLayout(exp_row)
 
         pc_layout.addWidget(trans_card)
         layout.addWidget(player_card, stretch=4)
@@ -2241,6 +2261,67 @@ class CrayonStudioApp(QMainWindow):
         else:
             self.lbl_checklist_score.setText(f"Score: {score} / 5 Checks Passed")
             self.lbl_checklist_score.setStyleSheet("color: #D88D00; font-weight: bold;")
+
+    def _get_project_final_mp4(self) -> Optional[str]:
+        slug = self.active_project_slug
+        proj_dir = os.path.join(PROJECTS_DIR, slug)
+        final_mp4 = os.path.join(proj_dir, f"{slug}_final.mp4")
+        if os.path.exists(final_mp4):
+            return final_mp4
+        raw_mp4 = os.path.join(proj_dir, "scene_raw.mp4")
+        if os.path.exists(raw_mp4):
+            return raw_mp4
+        if self.current_media_path and self.current_media_path.endswith(".mp4") and os.path.exists(self.current_media_path):
+            return self.current_media_path
+        return None
+
+    def _on_export_video(self):
+        video_path = self._get_project_final_mp4()
+        if not video_path:
+            QMessageBox.information(
+                self,
+                "Video Not Rendered Yet",
+                "You haven't rendered the MP4 video yet!\n\n"
+                "To create your video:\n"
+                "1. Go to Tab 2: Production Studio\n"
+                "2. Click '🚀 Generate Video Pipeline' (audio & timestamps)\n"
+                "3. Click '🎨 Render 2D Animation Pass' (or 3D Teardown)\n\n"
+                "Once rendering completes, return here and click '📥 Download / Export MP4' to save it anywhere on your PC.",
+            )
+            return
+
+        default_name = f"{self.active_project_slug}.mp4"
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        dest_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Download / Export Video",
+            os.path.join(downloads_dir, default_name),
+            "MP4 Video (*.mp4)",
+        )
+        if dest_path:
+            try:
+                shutil.copy2(video_path, dest_path)
+                reply = QMessageBox.question(
+                    self,
+                    "Export Successful",
+                    f"Video successfully saved to:\n{dest_path}\n\nWould you like to open the folder now?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes,
+                )
+                if reply == QMessageBox.Yes:
+                    dest_dir = os.path.dirname(dest_path)
+                    os.startfile(dest_dir)
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", f"Failed to export video:\n{e}")
+
+    def _on_open_project_folder(self):
+        slug = self.active_project_slug
+        proj_dir = os.path.join(PROJECTS_DIR, slug)
+        os.makedirs(proj_dir, exist_ok=True)
+        try:
+            os.startfile(proj_dir)
+        except Exception as e:
+            QMessageBox.critical(self, "Error Opening Folder", f"Could not open folder:\n{e}")
 
     def _on_mark_ready(self):
         if not self.active_project_id:
