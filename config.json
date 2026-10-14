@@ -1,9 +1,11 @@
 {
   "blender_path": "C:\\Program Files\\Blender Foundation\\Blender 5.0\\blender.exe",
   "ffmpeg_path": "C:\\Users\\gagee\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-9.0.2-full_build\\bin\\ffmpeg.exe",
-  "default_voice": "af_heart",
+  "default_voice": "en-US-AndrewMultilingualNeural",
   "speech_speed": 1.05,
   "target_duration": 65,
   "dry_run_mode": true,
-  "youtube_api_key": ""
+  "youtube_api_key": "",
+  "gemini_api_key": "",
+  "style_reference_path": ""
 }

@@ -410,7 +410,7 @@ class PipelineWorker(QThread):
         script_text: str,
         duration_target: int,
         tiktok_product: str,
-        voice: str = "af_heart",
+        voice: str = "en-US-AndrewMultilingualNeural",
         speed: float = 1.05,
         visual_engine: str = "2D_Crayon",
     ):
@@ -433,6 +433,8 @@ class PipelineWorker(QThread):
             self.progress_val.emit(10)
             proj_dir = os.path.join(PROJECTS_DIR, self.project_slug)
             os.makedirs(proj_dir, exist_ok=True)
+            with open(os.path.join(proj_dir, "script.txt"), "w", encoding="utf-8") as f:
+                f.write(self.script_text)
             self.log_message.emit(f"📁 Project workspace ready at: {proj_dir}")
 
             # 2. Persist/Update SQLite Record
@@ -530,18 +532,25 @@ class BlenderRenderWorker(QThread):
         category: str,
         blender_path: str,
         ffmpeg_path: str,
+        script_text: str = "",
         visual_engine: str = "2D_Crayon",
+        style_reference_path: Optional[str] = None,
     ):
         super().__init__()
         self.project_slug = project_slug
         self.category = category
         self.blender_path = blender_path
         self.ffmpeg_path = ffmpeg_path
+        self.script_text = script_text
         self.visual_engine = visual_engine
+        self.style_reference_path = style_reference_path
 
     def run(self):
         try:
             proj_dir = os.path.join(PROJECTS_DIR, self.project_slug)
+            if self.script_text:
+                with open(os.path.join(proj_dir, "script.txt"), "w", encoding="utf-8") as f:
+                    f.write(self.script_text)
             words_json = os.path.join(proj_dir, "words_timestamp.json")
             vo_path = os.path.join(proj_dir, "voiceover.wav")
             foley_path = os.path.join(proj_dir, "foley_track.wav")
@@ -565,6 +574,8 @@ class BlenderRenderWorker(QThread):
                 words_json_path=words_json,
                 output_mp4_path=raw_video,
                 category=self.category,
+                script_text=self.script_text,
+                style_reference_path=self.style_reference_path,
                 progress_callback=lambda msg: self.log_message.emit(msg),
             )
 
@@ -1117,9 +1128,21 @@ class CrayonStudioApp(QMainWindow):
         # Row 2: Visual Style Engine Selector (Dual-Engine Router)
         mc_layout.addWidget(QLabel("Visual Style Engine:"), 2, 0)
         self.combo_engine = QComboBox()
-        self.combo_engine.addItem("🎨 Engine A: 2D Crayon & Blueprint Sketchbook (Continuous Canvas)", "2D_Crayon")
-        self.combo_engine.addItem("⚙️ Engine B: 3D Hardware Teardown (Exploded View & X-Ray)", "3D_Teardown")
+        self.combo_engine.addItem("🎨 Engine A: AI Storyboard & Sketch-Reveal (Continuous Storybook)", "2D_Crayon")
+        self.combo_engine.addItem("⚙️ Engine B: 3D AI Hardware Teardown (Exploded View & X-Ray)", "3D_Teardown")
+        self.combo_engine.addItem("🏛️ Legacy Blender 3D Curves", "Blender_Legacy")
         mc_layout.addWidget(self.combo_engine, 2, 1, 1, 3)
+
+        # Row 3: Style Reference Screenshot Lock
+        mc_layout.addWidget(QLabel("Style Reference Image:"), 3, 0)
+        style_layout = QHBoxLayout()
+        self.input_style_ref = QLineEdit()
+        self.input_style_ref.setPlaceholderText("Optional path to style_reference.png screenshot for aesthetic locking...")
+        self.btn_browse_style_ref = QPushButton("Browse Image...")
+        self.btn_browse_style_ref.clicked.connect(self._on_browse_style_ref)
+        style_layout.addWidget(self.input_style_ref)
+        style_layout.addWidget(self.btn_browse_style_ref)
+        mc_layout.addLayout(style_layout, 3, 1, 1, 3)
 
         layout.addWidget(meta_card)
 
@@ -1186,7 +1209,7 @@ class CrayonStudioApp(QMainWindow):
         self.btn_generate_pipeline.setStyleSheet("font-size: 14px; padding: 10px 24px;")
         self.btn_generate_pipeline.clicked.connect(self._on_run_pipeline)
 
-        self.btn_render_blender = QPushButton("🎨 Render 2D Animation Pass")
+        self.btn_render_blender = QPushButton("🎨 Render AI Storyboard Video")
         self.btn_render_blender.clicked.connect(self._on_render_blender_animation)
 
         btn_row.addWidget(self.btn_save_draft)
@@ -1555,10 +1578,17 @@ class CrayonStudioApp(QMainWindow):
         sc_layout.addWidget(self.btn_validate_binaries, 3, 1)
         sc_layout.addWidget(self.lbl_binary_status, 3, 2)
 
-        # Kokoro Voice Selection
-        sc_layout.addWidget(QLabel("Default Kokoro Voice:"), 4, 0)
+        # Narrator Voice Selection
+        sc_layout.addWidget(QLabel("Narrator Voice:"), 4, 0)
         self.combo_voice = QComboBox()
-        self.combo_voice.addItems(["af_heart", "am_adam", "af_bella", "af_nicole", "bf_emma"])
+        self.combo_voice.addItems([
+            "en-US-AndrewMultilingualNeural",
+            "en-US-BrianMultilingualNeural",
+            "en-US-AvaMultilingualNeural",
+            "en-US-ChristopherNeural",
+            "af_heart",
+            "am_adam",
+        ])
         sc_layout.addWidget(self.combo_voice, 4, 1)
 
         # Speech Speed
@@ -1592,15 +1622,33 @@ class CrayonStudioApp(QMainWindow):
         self.input_yt_key.setPlaceholderText("Paste API key here...")
         sc_layout.addWidget(self.input_yt_key, 8, 1)
 
+        # Google Gemini / Imagen API Key
+        sc_layout.addWidget(QLabel("Google Gemini API Key (Optional):"), 9, 0)
+        self.input_gemini_key = QLineEdit()
+        self.input_gemini_key.setEchoMode(QLineEdit.Password)
+        self.input_gemini_key.setPlaceholderText("Paste Gemini API key for Imagen 3 & Vision analysis (or leave blank for free Flux)")
+        sc_layout.addWidget(self.input_gemini_key, 9, 1, 1, 2)
+
+        # Default Style Reference Screenshot
+        sc_layout.addWidget(QLabel("Default Style Reference Screenshot:"), 10, 0)
+        def_style_layout = QHBoxLayout()
+        self.input_default_style_ref = QLineEdit()
+        self.input_default_style_ref.setPlaceholderText("Optional path to default style_reference.png...")
+        self.btn_browse_default_style = QPushButton("Browse...")
+        self.btn_browse_default_style.clicked.connect(self._on_browse_default_style)
+        def_style_layout.addWidget(self.input_default_style_ref)
+        def_style_layout.addWidget(self.btn_browse_default_style)
+        sc_layout.addLayout(def_style_layout, 10, 1, 1, 2)
+
         # Save Button & Status
         btn_save_settings = QPushButton("💾 Save Settings to config.json")
         btn_save_settings.setProperty("class", "primary")
         btn_save_settings.clicked.connect(self._on_save_settings)
-        sc_layout.addWidget(btn_save_settings, 9, 1)
+        sc_layout.addWidget(btn_save_settings, 11, 1)
 
         self.lbl_settings_saved = QLabel("")
         self.lbl_settings_saved.setStyleSheet("color: #107C41; font-weight: bold;")
-        sc_layout.addWidget(self.lbl_settings_saved, 9, 2)
+        sc_layout.addWidget(self.lbl_settings_saved, 11, 2)
 
         layout.addWidget(set_card)
         layout.addStretch()
@@ -2165,12 +2213,15 @@ class CrayonStudioApp(QMainWindow):
             f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 🚀 Dispatching to {engine_label}..."
         )
 
+        style_ref = self.input_style_ref.text().strip() or self.config.get("style_reference_path", "")
         self.render_worker = BlenderRenderWorker(
             project_slug=slug,
             category=self.combo_category.currentText(),
             blender_path=blender_path,
             ffmpeg_path=ffmpeg_path,
+            script_text=self.text_script.toPlainText().strip(),
             visual_engine=v_engine,
+            style_reference_path=style_ref,
         )
         self.render_worker.log_message.connect(self._on_pipeline_log)
         self.render_worker.progress_val.connect(self.progress_bar.setValue)
@@ -2585,6 +2636,34 @@ class CrayonStudioApp(QMainWindow):
         self.spin_default_duration.setValue(int(self.config.get("target_duration", 65)))
         self.chk_dry_run.setChecked(bool(self.config.get("dry_run_mode", True)))
         self.input_yt_key.setText(self.config.get("youtube_api_key", ""))
+        self.input_gemini_key.setText(self.config.get("gemini_api_key", ""))
+
+        default_style = self.config.get("style_reference_path", "")
+        self.input_default_style_ref.setText(default_style)
+        if hasattr(self, "input_style_ref") and not self.input_style_ref.text().strip():
+            self.input_style_ref.setText(default_style)
+
+    def _on_browse_style_ref(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Style Reference Screenshot",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.webp);;All Files (*)",
+        )
+        if path:
+            self.input_style_ref.setText(path)
+
+    def _on_browse_default_style(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Default Style Reference Screenshot",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.webp);;All Files (*)",
+        )
+        if path:
+            self.input_default_style_ref.setText(path)
+            if hasattr(self, "input_style_ref") and not self.input_style_ref.text().strip():
+                self.input_style_ref.setText(path)
 
     def _on_browse_blender(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -2646,6 +2725,8 @@ class CrayonStudioApp(QMainWindow):
             "target_duration": self.spin_default_duration.value(),
             "dry_run_mode": self.chk_dry_run.isChecked(),
             "youtube_api_key": self.input_yt_key.text().strip(),
+            "gemini_api_key": self.input_gemini_key.text().strip(),
+            "style_reference_path": self.input_default_style_ref.text().strip(),
         }
         self.config = cfg
         if save_app_config(cfg):

@@ -1,7 +1,7 @@
 """
 CRAYON STUDIO — Visual Engine Router
-Dispatches 2D Continuous Canvas vs 3D Hardware Teardown rendering jobs
-and runs automated Visual Critic inspections.
+Dispatches AI Storyboard & Sketch-Reveal jobs (2D Storybook & 3D Teardown)
+with automated Visual Critic 4-Keyframe inspection.
 """
 
 import logging
@@ -9,6 +9,7 @@ import os
 import shutil
 from typing import Callable, Dict, List, Optional
 
+from core.storyboard_engine import AIStoryboardEngine
 from core.blender_orchestrator import BlenderOrchestrator
 from core.teardown_3d_engine import Teardown3DEngine
 from core.visual_critic import generate_and_verify_snapshots
@@ -19,16 +20,19 @@ logger = logging.getLogger("VisualEngineRouter")
 class VisualEngineRouter:
     """
     Unified router that selects between:
-      - Engine A: 2D Crayon & Blueprint Sketchbook (Continuous Canvas)
-      - Engine B: 3D Hardware Teardown (Exploded View & Kinetic X-Ray)
+      - Engine A: AI Storyboard & Sketch-Reveal (Continuous Storybook)
+      - Engine B: 3D AI Hardware Teardown (Exploded View & X-Ray)
+      - Legacy: Headless Blender 3D Curves
     """
 
     ENGINE_2D = "2D_Crayon"
     ENGINE_3D = "3D_Teardown"
+    ENGINE_BLENDER = "Blender_Legacy"
 
     DISPLAY_NAMES = {
-        "2D_Crayon": "🎨 Engine A: 2D Crayon & Blueprint Sketchbook (Continuous Canvas)",
-        "3D_Teardown": "⚙️ Engine B: 3D Hardware Teardown (Exploded View & X-Ray)",
+        "2D_Crayon": "🎨 Engine A: AI Storyboard & Sketch-Reveal (Continuous Storybook)",
+        "3D_Teardown": "⚙️ Engine B: 3D AI Hardware Teardown (Exploded View & X-Ray)",
+        "Blender_Legacy": "🏛️ Legacy Blender 3D Curves",
     }
 
     def __init__(
@@ -37,7 +41,7 @@ class VisualEngineRouter:
         blender_path: Optional[str] = None,
         ffmpeg_path: Optional[str] = None,
     ):
-        self.visual_engine = visual_engine if visual_engine in (self.ENGINE_2D, self.ENGINE_3D) else self.ENGINE_2D
+        self.visual_engine = visual_engine if visual_engine in self.DISPLAY_NAMES else self.ENGINE_2D
         self.blender_path = blender_path
         self.ffmpeg_path = ffmpeg_path or "ffmpeg"
 
@@ -59,10 +63,12 @@ class VisualEngineRouter:
         words_json_path: str,
         output_mp4_path: str,
         category: str = "STEM",
+        script_text: Optional[str] = None,
+        style_reference_path: Optional[str] = None,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> Dict:
         """
-        Executes headless rendering through the selected engine, followed by
+        Executes rendering through the selected engine, followed by
         4-keyframe visual inspection.
         Returns dict with output_mp4_path, snapshots, and critic_report.
         """
@@ -73,26 +79,31 @@ class VisualEngineRouter:
 
         _cb(f"🚀 Initializing {self.get_display_name(self.visual_engine)}...")
 
-        if self.visual_engine == self.ENGINE_3D:
-            engine = Teardown3DEngine(blender_path=self.blender_path)
-            rendered_video = engine.render_project(
-                project_dir=project_dir,
-                words_json_path=words_json_path,
-                output_mp4_path=output_mp4_path,
-                category=category,
-                progress_callback=_cb,
-            )
-        else:
+        if self.visual_engine == self.ENGINE_BLENDER:
             engine = BlenderOrchestrator(blender_path=self.blender_path)
             rendered_video = engine.render_project(
                 project_dir=project_dir,
                 words_json_path=words_json_path,
                 output_mp4_path=output_mp4_path,
                 category=category,
+                script_text=script_text,
+                progress_callback=_cb,
+            )
+        else:
+            # Default for 2D_Crayon and 3D_Teardown: AIStoryboardEngine
+            engine = AIStoryboardEngine(config_path="config.json")
+            rendered_video = engine.render_project(
+                project_dir=project_dir,
+                words_json_path=words_json_path,
+                output_mp4_path=output_mp4_path,
+                category=category,
+                script_text=script_text,
+                visual_engine=self.visual_engine,
+                style_reference_path=style_reference_path,
                 progress_callback=_cb,
             )
 
-        # Run Visual Critic 4-Keyframe inspection
+        # Run Visual Critic 4-Keyframe automated inspection
         _cb("🔍 Running Visual Critic 4-Keyframe automated inspection...")
         critic_report = generate_and_verify_snapshots(
             video_path=rendered_video,

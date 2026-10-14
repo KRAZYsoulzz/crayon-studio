@@ -1,20 +1,34 @@
-import os
-import sys
-import json
+"""Universal Storybook Blender Orchestrator.
+
+Renders 9:16 vertical educational short-form animations using:
+- Procedural sketchbook watercolor paper shader (TexNoise + TexVoronoi)
+- Textured wax crayon materials with organic pigment grain
+- Smooth Cubic Bezier splines (type='BEZIER' with AUTO handles)
+- Dynamic 3D callout labels derived from the script's actual words
+- Purposeful process animations (draw progressive, pour along arc, fracture/fall, crystal growth)
+- Continuous 5-zone camera navigation
+- Automated 4-keyframe Visual Critic snapshot extraction
+"""
+
+from __future__ import annotations
+
 import glob
+import json
+import logging
 import math
+import os
 import shutil
 import subprocess
-from typing import Callable, Dict, List, Optional, Tuple, Any
+import sys
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from core.scene_choreographer import SceneChoreographer
+
+logger = logging.getLogger("crayon_studio.blender_orchestrator")
 
 
 class BlenderOrchestrator:
-    """
-    Bulletproof Blender 4.x / 5.0 2D Crayon Animation Engine.
-    Uses native 3D beveled Curve primitives with Emission Crayon Shaders and
-    bevel_factor_end draw-on keyframes on a continuous 5-zone canvas.
-    Eliminates SVG import scaling/material bugs 100%.
-    """
+    """Bulletproof Blender 5.0 Visual Orchestrator using Bezier curves and procedural shaders."""
 
     def __init__(self, blender_path: Optional[str] = None, fps: int = 30):
         self.fps = fps
@@ -71,67 +85,24 @@ class BlenderOrchestrator:
 
         return "blender"
 
-    def parse_word_cues(
-        self,
-        words_json_path: str,
-        default_duration: float = 65.0,
-    ) -> Tuple[float, List[Dict[str, Any]]]:
-        words: List[Dict[str, Any]] = []
-        if os.path.exists(words_json_path):
-            try:
-                with open(words_json_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    words = data if isinstance(data, list) else data.get("words", [])
-            except Exception:
-                words = []
-
-        total_duration = default_duration
-        if words:
-            last_end = float(words[-1].get("end", default_duration))
-            total_duration = max(last_end + 0.5, 10.0)
-
-        act_ratios = [0.0, 0.16, 0.36, 0.58, 0.80]
-        scenes = []
-        act_names = [
-            "Act1_Hook_Incomplete",
-            "Act2_Core_Mechanism",
-            "Act3_Obstacle_Friction",
-            "Act4_Trigger_Action",
-            "Act5_Resolution_Bridge",
-        ]
-
-        for i in range(5):
-            start_s = round(total_duration * act_ratios[i], 2)
-            end_s = round(total_duration * act_ratios[i + 1], 2) if i < 4 else total_duration
-            start_frame = 1 if i == 0 else max(2, int(round(start_s * self.fps)))
-            end_frame = max(start_frame + 20, int(round(end_s * self.fps)))
-            scenes.append({
-                "index": i,
-                "name": act_names[i],
-                "start_frame": start_frame,
-                "end_frame": end_frame,
-                "draw_frames": min(40, max(15, int((end_frame - start_frame) * 0.25))),
-            })
-
-        return total_duration, scenes
-
     def _build_headless_blender_script(
         self,
-        scenes: List[Dict[str, Any]],
+        blueprint: Dict[str, Any],
         output_mp4_path: str,
-        total_duration: float,
-        category: str = "Architecture",
+        preview_snapshots_dir: Optional[str] = None,
     ) -> str:
+        """Constructs the complete standalone Python script executed inside headless Blender."""
         payload = {
             "fps": self.fps,
-            "total_frames": int(math.ceil(total_duration * self.fps)),
+            "total_frames": blueprint["total_frames"],
+            "total_duration": blueprint["total_duration"],
             "output_mp4_path": os.path.abspath(output_mp4_path),
-            "scenes": scenes,
-            "category": category,
+            "preview_snapshots_dir": os.path.abspath(preview_snapshots_dir) if preview_snapshots_dir else "",
+            "blueprint": blueprint,
         }
         payload_json = json.dumps(payload, indent=2)
 
-        return f'''# Headless Blender 5.0 Native Curve Crayon Engine (Zero-SVG)
+        return f'''# Headless Blender 5.0 Universal Storybook Crayon Engine
 import bpy
 import os
 import json
@@ -174,14 +145,31 @@ def setup_scene():
     except Exception:
         pass
 
-    # Warm Cream Sketchbook Paper World
+    # Procedural Watercolor Sketchbook Paper World Shader
     world = bpy.data.worlds.new("PaperWorld")
     scene.world = world
     world.use_nodes = True
-    bg = world.node_tree.nodes.get("Background")
-    if bg:
-        bg.inputs[0].default_value = (0.96, 0.94, 0.89, 1.0)
-        bg.inputs[1].default_value = 1.0
+    nodes = world.node_tree.nodes
+    links = world.node_tree.links
+    nodes.clear()
+
+    out = nodes.new(type='ShaderNodeOutputWorld')
+    bg = nodes.new(type='ShaderNodeBackground')
+    noise = nodes.new(type='ShaderNodeTexNoise')
+    noise.inputs['Scale'].default_value = 450.0
+    noise.inputs['Detail'].default_value = 8.0
+
+    try:
+        mix = nodes.new(type='ShaderNodeMix')
+        mix.data_type = 'RGBA'
+        mix.inputs['Factor'].default_value = 0.07
+        mix.inputs[6].default_value = (0.96, 0.94, 0.89, 1.0)
+        links.new(noise.outputs['Color'], mix.inputs[7])
+        links.new(mix.outputs[2], bg.inputs['Color'])
+    except Exception:
+        bg.inputs['Color'].default_value = (0.96, 0.94, 0.89, 1.0)
+
+    links.new(bg.outputs['Background'], out.inputs['Surface'])
 
     # 9:16 Orthographic Camera (Width = 3.2 units -> X spans -1.6 to +1.6, Y spans -2.84 to +2.84)
     cam_data = bpy.data.cameras.new("CrayonOrthoCam")
@@ -193,7 +181,8 @@ def setup_scene():
     cam_obj.location = (0.0, 0.0, 10.0)
     return scene, cam_obj
 
-def make_crayon_mat(name, rgba):
+def make_textured_crayon_mat(name, rgba):
+    """Creates an authentic wax crayon material with procedural pigment grain."""
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -202,13 +191,36 @@ def make_crayon_mat(name, rgba):
 
     out = nodes.new(type='ShaderNodeOutputMaterial')
     emis = nodes.new(type='ShaderNodeEmission')
-    emis.inputs["Color"].default_value = rgba
     emis.inputs["Strength"].default_value = 1.0
+
+    noise = nodes.new(type='ShaderNodeTexNoise')
+    noise.inputs["Scale"].default_value = 180.0
+    noise.inputs["Detail"].default_value = 6.0
+    noise.inputs["Roughness"].default_value = 0.75
+
+    ramp = nodes.new(type='ShaderNodeValToRGB')
+    ramp.color_ramp.elements[0].position = 0.25
+    ramp.color_ramp.elements[0].color = (0.75, 0.75, 0.75, 1.0)
+    ramp.color_ramp.elements[1].position = 0.85
+    ramp.color_ramp.elements[1].color = (1.0, 1.0, 1.0, 1.0)
+    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+
+    try:
+        mix = nodes.new(type='ShaderNodeMix')
+        mix.data_type = 'RGBA'
+        mix.blend_type = 'MULTIPLY'
+        mix.inputs["Factor"].default_value = 0.40
+        mix.inputs[6].default_value = rgba
+        links.new(ramp.outputs["Color"], mix.inputs[7])
+        links.new(mix.outputs[2], emis.inputs["Color"])
+    except Exception:
+        emis.inputs["Color"].default_value = rgba
+
     links.new(emis.outputs["Emission"], out.inputs["Surface"])
     return mat
 
-def add_crayon_curve(name, strokes, mat, base_loc=(0.0, 0.0, 0.0), thickness=0.034, cyclic=False):
-    """Creates a bold, visible 3D beveled Curve object from a list of 2D/3D point lists."""
+def add_crayon_spline_object(name, strokes, mat, base_loc=(0.0, 0.0, 0.0), thickness=0.034, spline_type="BEZIER"):
+    """Creates a 3D beveled Curve with smooth Cubic Bezier or crisp Poly points."""
     curve_data = bpy.data.curves.new(name=name, type='CURVE')
     curve_data.dimensions = '3D'
     curve_data.bevel_depth = thickness
@@ -217,260 +229,245 @@ def add_crayon_curve(name, strokes, mat, base_loc=(0.0, 0.0, 0.0), thickness=0.0
     curve_data.materials.append(mat)
 
     for pts in strokes:
-        spline = curve_data.splines.new(type='POLY')
-        spline.points.add(len(pts) - 1)
-        for i, pt in enumerate(pts):
-            x, y = pt[0], pt[1]
-            z = pt[2] if len(pt) > 2 else 0.0
-            spline.points[i].co = (x, y, z, 1.0)
-        spline.use_cyclic_u = cyclic
+        if spline_type == "BEZIER":
+            spline = curve_data.splines.new(type='BEZIER')
+            spline.resolution_u = 24
+            spline.bezier_points.add(len(pts) - 1)
+            for i, pt in enumerate(pts):
+                bp = spline.bezier_points[i]
+                bp.co = (pt[0], pt[1], pt[2] if len(pt) > 2 else 0.0)
+                bp.handle_left_type = 'AUTO'
+                bp.handle_right_type = 'AUTO'
+        else:
+            spline = curve_data.splines.new(type='POLY')
+            spline.points.add(len(pts) - 1)
+            for i, pt in enumerate(pts):
+                spline.points[i].co = (pt[0], pt[1], pt[2] if len(pt) > 2 else 0.0, 1.0)
 
     obj = bpy.data.objects.new(name, curve_data)
     bpy.context.scene.collection.objects.link(obj)
     obj.location = base_loc
     return obj
 
-def circle_pts(cx, cy, r, n=28):
-    return [(cx + r * math.cos(2 * math.pi * i / n), cy + r * math.sin(2 * math.pi * i / n)) for i in range(n + 1)]
+def add_crayon_label(text, loc, mat, size=0.14):
+    """Creates a clean 3D typography callout label beside diagrams."""
+    clean_text = str(text).upper()[:22]
+    font_data = bpy.data.curves.new(name=f"Lbl_{{clean_text[:6]}}", type='FONT')
+    font_data.body = clean_text
+    font_data.size = size
+    font_data.extrude = 0.008
+    font_data.materials.append(mat)
 
-def rect_pts(cx, cy, w, h):
-    hw, hh = w / 2.0, h / 2.0
-    return [(cx - hw, cy - hh), (cx + hw, cy - hh), (cx + hw, cy + hh), (cx - hw, cy + hh), (cx - hw, cy - hh)]
+    obj = bpy.data.objects.new(name=f"Lbl_{{clean_text[:6]}}", object_data=font_data)
+    bpy.context.scene.collection.objects.link(obj)
+    obj.location = loc
+    return obj
 
-def wave_pts(x0, x1, y_base, amp, freq, n=32):
-    pts = []
-    for i in range(n + 1):
-        t = i / float(n)
-        x = x0 + (x1 - x0) * t
-        y = y_base + amp * math.sin(t * math.pi * 2.0 * freq)
-        pts.append((x, y))
-    return pts
+def keyframe_process_animation(obj, anim_spec, s_frame, e_frame, d_frames, base_loc):
+    """Applies purposeful, one-directional cause-and-effect keyframe animations."""
+    anim_type = anim_spec.get("type", "draw_stroke_progressive")
+    start_offset = anim_spec.get("start_offset", 0)
+    dur = anim_spec.get("duration", d_frames)
 
-def keyframe_draw_in(obj, start_f, draw_frames):
+    act_start = s_frame + start_offset
+    act_end = min(e_frame, act_start + dur)
     cd = obj.data
-    if start_f > 1:
-        cd.bevel_factor_end = 0.0
-        cd.keyframe_insert(data_path="bevel_factor_end", frame=1)
-        cd.keyframe_insert(data_path="bevel_factor_end", frame=max(1, start_f - 1))
-    else:
-        # Frame 1 Visual Incomplete Rule: already 55% drawn on Frame 1!
-        cd.bevel_factor_end = 0.55
-        cd.keyframe_insert(data_path="bevel_factor_end", frame=1)
 
-    cd.bevel_factor_end = 1.0
-    cd.keyframe_insert(data_path="bevel_factor_end", frame=start_f + draw_frames)
+    if anim_type == "draw_stroke_progressive":
+        if hasattr(cd, "bevel_factor_end"):
+            if s_frame <= 1 and start_offset == 0:
+                # Frame 1 Visual Incomplete Hook rule: 55% already drawn on frame 1
+                cd.bevel_factor_end = 0.55
+                cd.keyframe_insert(data_path="bevel_factor_end", frame=1)
+            else:
+                cd.bevel_factor_end = 0.0
+                cd.keyframe_insert(data_path="bevel_factor_end", frame=1)
+                cd.keyframe_insert(data_path="bevel_factor_end", frame=max(1, act_start - 1))
 
-def keyframe_continuous_motion(obj, motion, start_f, end_f, base_loc):
-    bx, by, bz = base_loc
-    step = 6
-    for f in range(start_f, end_f + step, step):
-        t = (f - start_f) / max(1.0, float(end_f - start_f))
-        if motion == "wave_slosh":
-            obj.location = (bx + 0.14 * math.sin(f * 0.15), by + 0.07 * math.cos(f * 0.15), bz)
+            cd.bevel_factor_end = 1.0
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=act_end)
+
+    elif anim_type == "pour_along_arc":
+        if hasattr(cd, "bevel_factor_start") and hasattr(cd, "bevel_factor_end"):
+            cd.bevel_factor_start = 0.0
+            cd.bevel_factor_end = 0.0
+            cd.keyframe_insert(data_path="bevel_factor_start", frame=max(1, act_start - 1))
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=max(1, act_start - 1))
+
+            # Stream stretches down
+            mid_f = int((act_start + act_end) / 2)
+            cd.bevel_factor_start = 0.0
+            cd.bevel_factor_end = 1.0
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=mid_f)
+
+            # Tail follows into vessel
+            cd.bevel_factor_start = 1.0
+            cd.keyframe_insert(data_path="bevel_factor_start", frame=act_end)
+
+    elif anim_type == "fracture_and_fall":
+        # Draw crack line first
+        if hasattr(cd, "bevel_factor_end"):
+            cd.bevel_factor_end = 0.0
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=max(1, act_start - 1))
+            cd.bevel_factor_end = 1.0
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=act_start + 8)
+
+        # Then accelerate detached piece downward (gravity)
+        bx, by, bz = base_loc
+        fall_start = act_start + 8
+        fall_dur = max(6, act_end - fall_start)
+        for f in range(fall_start, act_end + 1, 3):
+            t = (f - fall_start) / float(fall_dur)
+            drop = 0.45 * (t ** 2)  # Parabolic gravitational drop
+            obj.location = (bx, by - drop, bz)
             obj.keyframe_insert(data_path="location", frame=f)
-        elif motion == "pulse_grow":
-            s = 1.0 + 0.12 * math.sin(f * 0.18)
-            obj.scale = (s, s, 1.0)
-            obj.keyframe_insert(data_path="scale", frame=f)
-        elif motion == "hinge_rock":
-            obj.rotation_euler = (0.0, 0.0, math.radians(16.0 * math.sin(f * 0.14)))
-            obj.keyframe_insert(data_path="rotation_euler", frame=f)
-        elif motion == "fall_in":
-            drop = max(0.0, 1.0 - min(1.0, t * 2.2)) * 0.65
-            bob = 0.05 * math.sin(f * 0.2)
-            obj.location = (bx, by + drop + bob, bz)
-            obj.keyframe_insert(data_path="location", frame=f)
-        elif motion == "converge_lock":
-            squeeze = min(1.0, t * 1.5) * 0.22
-            obj.scale = (1.0 - squeeze * 0.3, 1.0 + squeeze * 0.3, 1.0)
-            obj.keyframe_insert(data_path="scale", frame=f)
 
-def build_act_geometry(act_idx, zone_x, zone_y, s_frame, e_frame, d_frames, mats):
-    """Builds bold, multi-part diagrams filling X: [-1.15, +1.15], Y: [-0.15, +1.35] around zone center."""
-    # Draw subtle notebook frame card + grid lines so canvas always looks rich
-    frame_strokes = [
-        rect_pts(0.0, 0.55, 2.55, 1.85),
-        [(-1.27, 1.25), (1.27, 1.25)],
+    elif anim_type == "grow_and_interlock":
+        # Structure scales outward and locks still
+        obj.scale = (0.05, 1.0, 1.0)
+        obj.keyframe_insert(data_path="scale", frame=max(1, act_start - 1))
+        obj.scale = (1.0, 1.0, 1.0)
+        obj.keyframe_insert(data_path="scale", frame=act_end)
+
+    elif anim_type == "flow_through_channel":
+        if hasattr(cd, "bevel_factor_start") and hasattr(cd, "bevel_factor_end"):
+            cd.bevel_factor_start = 0.0
+            cd.bevel_factor_end = 0.0
+            cd.keyframe_insert(data_path="bevel_factor_start", frame=max(1, act_start - 1))
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=max(1, act_start - 1))
+
+            mid_f = int((act_start + act_end) / 2)
+            cd.bevel_factor_end = 1.0
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=mid_f)
+
+            cd.bevel_factor_start = 0.2
+            cd.keyframe_insert(data_path="bevel_factor_start", frame=act_end)
+
+def capture_snapshots_if_requested(scene, snapshot_dir):
+    """Captures 4 keyframe PNG snapshots at 5%, 30%, 60%, and 88% timeline for Visual Critic."""
+    if not snapshot_dir:
+        return
+    os.makedirs(snapshot_dir, exist_ok=True)
+
+    total_f = PAYLOAD["total_frames"]
+    checkpoints = [
+        ("frame_1_closed.png", max(1, int(total_f * 0.05))),
+        ("frame_2_exploded.png", max(2, int(total_f * 0.30))),
+        ("frame_3_action.png", max(3, int(total_f * 0.60))),
+        ("frame_4_cutaway.png", max(4, int(total_f * 0.88))),
     ]
-    card = add_crayon_curve(f"Card_Act{{act_idx}}", frame_strokes, mats["charcoal"], (zone_x, zone_y, -0.1), thickness=0.016)
-    keyframe_draw_in(card, s_frame, 10)
 
-    if act_idx == 0:
-        # ACT 1: Roman Harbor Seawall vs Crashing Ocean Waves (Hook)
-        seawall = [
-            rect_pts(-0.48, 0.45, 0.82, 1.15),
-            [(-0.89, 0.75), (-0.07, 0.75)],
-            [(-0.89, 0.45), (-0.07, 0.45)],
-            [(-0.89, 0.15), (-0.07, 0.15)],
-            [(-0.48, 1.02), (-0.48, -0.12)],
-        ]
-        o1 = add_crayon_curve("Act1_Seawall", seawall, mats["charcoal"], (zone_x, zone_y, 0.0), thickness=0.036)
-        keyframe_draw_in(o1, 1, 12)
+    orig_format = scene.render.image_settings.file_format
+    if hasattr(scene.render.image_settings, "media_type"):
+        try:
+            scene.render.image_settings.media_type = 'IMAGE'
+        except Exception:
+            pass
+    scene.render.image_settings.file_format = 'PNG'
 
-        waves = [
-            wave_pts(0.05, 1.15, 0.75, 0.14, 2.0),
-            wave_pts(0.05, 1.15, 0.42, 0.14, 2.0),
-            wave_pts(0.05, 1.15, 0.10, 0.14, 2.0),
-        ]
-        o2 = add_crayon_curve("Act1_Waves", waves, mats["blue"], (zone_x, zone_y, 0.05), thickness=0.038)
-        keyframe_draw_in(o2, s_frame + 4, d_frames)
-        keyframe_continuous_motion(o2, "wave_slosh", s_frame, e_frame, (zone_x, zone_y, 0.05))
+    for fname, f_num in checkpoints:
+        out_path = os.path.join(snapshot_dir, fname)
+        scene.frame_set(f_num)
+        scene.render.filepath = out_path
+        try:
+            bpy.ops.render.render(write_still=True)
+            print(f"[CrayonStudio] Visual Critic snapshot saved: {{out_path}} (frame {{f_num}})")
+        except Exception as e:
+            print(f"[CrayonStudio] Snapshot failed for frame {{f_num}}: {{e}}")
 
-        impact_arrows = [
-            [(0.55, 1.05), (0.02, 0.85)],
-            [(0.20, 0.98), (0.02, 0.85), (0.22, 0.76)],
-            [(0.55, 0.55), (0.02, 0.55)],
-            [(0.20, 0.65), (0.02, 0.55), (0.20, 0.45)],
-        ]
-        o3 = add_crayon_curve("Act1_Impact", impact_arrows, mats["red"], (zone_x, zone_y, 0.08), thickness=0.034)
-        keyframe_draw_in(o3, s_frame + 10, d_frames)
-        keyframe_continuous_motion(o3, "pulse_grow", s_frame, e_frame, (zone_x, zone_y, 0.08))
+    # Restore video format
+    if hasattr(scene.render.image_settings, "media_type"):
+        try:
+            scene.render.image_settings.media_type = 'VIDEO'
+        except Exception:
+            pass
+    scene.render.image_settings.file_format = orig_format
+    scene.render.filepath = PAYLOAD["output_mp4_path"]
 
-    elif act_idx == 1:
-        # ACT 2: Electron Microscope & Volcanic Ash / Quicklime Mix
-        micro_ring = [circle_pts(0.0, 0.55, 0.72, 36), circle_pts(0.0, 0.55, 0.82, 36)]
-        o1 = add_crayon_curve("Act2_ScopeRing", micro_ring, mats["blue"], (zone_x, zone_y, 0.0), thickness=0.032)
-        keyframe_draw_in(o1, s_frame, d_frames)
-
-        ash_clasts = [
-            circle_pts(-0.32, 0.75, 0.18, 7),
-            circle_pts(0.28, 0.72, 0.21, 6),
-            circle_pts(-0.18, 0.30, 0.19, 8),
-            circle_pts(0.26, 0.32, 0.16, 7),
-        ]
-        o2 = add_crayon_curve("Act2_VolcanicAsh", ash_clasts, mats["red"], (zone_x, zone_y, 0.05), thickness=0.036)
-        keyframe_draw_in(o2, s_frame + 8, d_frames)
-        keyframe_continuous_motion(o2, "pulse_grow", s_frame, e_frame, (zone_x, zone_y, 0.05))
-
-        lime_sparks = [
-            [(-0.32, 1.08), (-0.32, 0.96)],
-            [(0.28, 1.08), (0.28, 0.96)],
-            [(-0.62, 0.55), (0.62, 0.55)],
-        ]
-        o3 = add_crayon_curve("Act2_Quicklime", lime_sparks, mats["gold"], (zone_x, zone_y, 0.08), thickness=0.032)
-        keyframe_draw_in(o3, s_frame + 14, d_frames)
-        keyframe_continuous_motion(o3, "hinge_rock", s_frame, e_frame, (zone_x, zone_y, 0.08))
-
-    elif act_idx == 2:
-        # ACT 3: Seawater Infiltrating Micro-Cracks
-        cracked_block = [
-            rect_pts(0.0, 0.55, 1.95, 1.25),
-            [(-0.15, 1.17), (0.12, 0.82), (-0.22, 0.52), (0.18, 0.22), (-0.08, -0.07)],
-        ]
-        o1 = add_crayon_curve("Act3_CrackedWall", cracked_block, mats["charcoal"], (zone_x, zone_y, 0.0), thickness=0.036)
-        keyframe_draw_in(o1, s_frame, d_frames)
-
-        water_streams = [
-            wave_pts(-0.85, 0.85, 0.85, 0.09, 3.0),
-            wave_pts(-0.85, 0.85, 0.55, 0.09, 3.0),
-            wave_pts(-0.85, 0.85, 0.25, 0.09, 3.0),
-        ]
-        o2 = add_crayon_curve("Act3_SeawaterFlow", water_streams, mats["blue"], (zone_x, zone_y, 0.05), thickness=0.034)
-        keyframe_draw_in(o2, s_frame + 6, d_frames)
-        keyframe_continuous_motion(o2, "wave_slosh", s_frame, e_frame, (zone_x, zone_y, 0.05))
-
-        reaction_nodes = [
-            circle_pts(0.12, 0.82, 0.14, 16),
-            circle_pts(-0.22, 0.52, 0.14, 16),
-            circle_pts(0.18, 0.22, 0.14, 16),
-        ]
-        o3 = add_crayon_curve("Act3_ReactionZones", reaction_nodes, mats["gold"], (zone_x, zone_y, 0.08), thickness=0.036)
-        keyframe_draw_in(o3, s_frame + 12, d_frames)
-        keyframe_continuous_motion(o3, "pulse_grow", s_frame, e_frame, (zone_x, zone_y, 0.08))
-
-    elif act_idx == 3:
-        # ACT 4: Aluminous Tobermorite Crystal Lattice Growing Across the Void
-        gap_walls = [
-            [(-0.75, 1.15), (-0.55, -0.05)],
-            [(0.75, 1.15), (0.55, -0.05)],
-        ]
-        o1 = add_crayon_curve("Act4_PoreWalls", gap_walls, mats["charcoal"], (zone_x, zone_y, 0.0), thickness=0.042)
-        keyframe_draw_in(o1, s_frame, d_frames)
-
-        crystals = [
-            [(-0.65, 0.95), (0.65, 0.72), (-0.60, 0.48), (0.60, 0.25), (-0.55, 0.05)],
-            [(0.65, 0.95), (-0.65, 0.72), (0.60, 0.48), (-0.60, 0.25), (0.55, 0.05)],
-            circle_pts(0.0, 0.83, 0.15, 6),
-            circle_pts(0.0, 0.60, 0.17, 6),
-            circle_pts(0.0, 0.36, 0.15, 6),
-        ]
-        o2 = add_crayon_curve("Act4_TobermoriteCrystals", crystals, mats["green"], (zone_x, zone_y, 0.06), thickness=0.036)
-        keyframe_draw_in(o2, s_frame + 6, d_frames)
-        keyframe_continuous_motion(o2, "pulse_grow", s_frame, e_frame, (zone_x, zone_y, 0.06))
-
-        bonds = [
-            [(-0.35, 0.83), (0.35, 0.83)],
-            [(-0.38, 0.60), (0.38, 0.60)],
-            [(-0.35, 0.36), (0.35, 0.36)],
-        ]
-        o3 = add_crayon_curve("Act4_CrystalBonds", bonds, mats["gold"], (zone_x, zone_y, 0.09), thickness=0.032)
-        keyframe_draw_in(o3, s_frame + 12, d_frames)
-        keyframe_continuous_motion(o3, "converge_lock", s_frame, e_frame, (zone_x, zone_y, 0.09))
-
-    else:
-        # ACT 5: Self-Healing Roman Arch Locked Solid Under Load
-        arch_stones = [
-            circle_pts(0.0, 0.25, 0.88, 12),
-            circle_pts(0.0, 0.25, 0.52, 12),
-            [(-0.95, 0.25), (0.95, 0.25)],
-        ]
-        o1 = add_crayon_curve("Act5_RomanArch", arch_stones, mats["blue"], (zone_x, zone_y, 0.0), thickness=0.038)
-        keyframe_draw_in(o1, s_frame, d_frames)
-
-        keystone = [
-            rect_pts(0.0, 0.96, 0.36, 0.38),
-            [(-0.45, 1.32), (0.0, 1.15), (0.45, 1.32)],
-        ]
-        o2 = add_crayon_curve("Act5_Keystone", keystone, mats["gold"], (zone_x, zone_y, 0.06), thickness=0.040)
-        keyframe_draw_in(o2, s_frame + 6, d_frames)
-        keyframe_continuous_motion(o2, "fall_in", s_frame, e_frame, (zone_x, zone_y, 0.06))
-
-        shield_check = [
-            [(-0.28, 0.52), (-0.05, 0.30), (0.38, 0.76)],
-        ]
-        o3 = add_crayon_curve("Act5_Checkmark", shield_check, mats["green"], (zone_x, zone_y, 0.09), thickness=0.044)
-        keyframe_draw_in(o3, s_frame + 14, d_frames)
-        keyframe_continuous_motion(o3, "pulse_grow", s_frame, e_frame, (zone_x, zone_y, 0.09))
-
-def build_full_animation():
+def build_full_story():
     scene, cam_obj = setup_scene()
     cam_data = cam_obj.data
 
     mats = {{
-        "blue": make_crayon_mat("CrayonBlue", (0.10, 0.36, 0.84, 1.0)),
-        "red": make_crayon_mat("CrayonRed", (0.86, 0.16, 0.18, 1.0)),
-        "gold": make_crayon_mat("CrayonGold", (0.90, 0.58, 0.04, 1.0)),
-        "green": make_crayon_mat("CrayonGreen", (0.12, 0.66, 0.30, 1.0)),
-        "charcoal": make_crayon_mat("CrayonCharcoal", (0.16, 0.16, 0.18, 1.0)),
+        "blue": make_textured_crayon_mat("CrayonBlue", (0.12, 0.42, 0.88, 1.0)),
+        "red": make_textured_crayon_mat("CrayonRed", (0.88, 0.18, 0.20, 1.0)),
+        "gold": make_textured_crayon_mat("CrayonGold", (0.92, 0.62, 0.06, 1.0)),
+        "green": make_textured_crayon_mat("CrayonGreen", (0.14, 0.70, 0.32, 1.0)),
+        "charcoal": make_textured_crayon_mat("CrayonCharcoal", (0.18, 0.18, 0.20, 1.0)),
+        "cyan": make_textured_crayon_mat("CrayonCyan", (0.06, 0.75, 0.88, 1.0)),
+        "white": make_textured_crayon_mat("CrayonWhite", (0.95, 0.95, 0.95, 1.0)),
     }}
 
-    # Continuous Canvas Zone Coordinates (Camera pans smoothly across the giant sheet)
-    zones = [
-        (0.0, 0.0),
-        (4.2, 0.35),
-        (8.4, -0.25),
-        (12.6, 0.30),
-        (16.8, 0.0),
-    ]
+    blueprint = PAYLOAD["blueprint"]
+    acts = blueprint.get("acts", [])
+    zones = blueprint.get("canvas_zones", [])
 
-    scenes = PAYLOAD["scenes"]
-    for sc in scenes:
-        idx = sc["index"]
-        zx, zy = zones[idx]
-        s_frame = sc["start_frame"]
-        e_frame = sc["end_frame"]
-        d_frames = sc["draw_frames"]
+    for act in acts:
+        idx = act["act_index"]
+        zx, zy = act["zone_coords"]
+        s_frame = act["start_frame"]
+        e_frame = act["end_frame"]
+        d_frames = act["draw_frames"]
 
-        build_act_geometry(idx, zx, zy, s_frame, e_frame, d_frames, mats)
+        # Build each component curve
+        for comp in act.get("components", []):
+            c_name = f"Act{{idx}}_{{comp['name']}}"
+            c_type = comp.get("spline_type", "BEZIER")
+            c_mat = mats.get(comp.get("color", "charcoal"), mats["charcoal"])
+            c_thick = comp.get("thickness", 0.034)
+            strokes = comp.get("strokes", [])
 
-        # Draw connector trail to next zone on continuous canvas
+            c_obj = add_crayon_spline_object(
+                name=c_name,
+                strokes=strokes,
+                mat=c_mat,
+                base_loc=(zx, zy, 0.0),
+                thickness=c_thick,
+                spline_type=c_type,
+            )
+
+            anim = comp.get("animation", {{}})
+            keyframe_process_animation(c_obj, anim, s_frame, e_frame, d_frames, (zx, zy, 0.0))
+
+        # Add 3D Typography Callout Labels
+        labels = act.get("labels", {{}})
+        if "left" in labels and "right" in labels:
+            lbl_l = add_crayon_label(labels["left"], (zx - 1.10, zy - 0.25, 0.05), mats["charcoal"], size=0.13)
+            lbl_r = add_crayon_label(labels["right"], (zx + 0.18, zy - 0.25, 0.05), mats["charcoal"], size=0.13)
+            if "center" in labels:
+                add_crayon_label(labels["center"], (zx - 0.12, zy + 0.45, 0.06), mats["gold"], size=0.18)
+        elif "title" in labels:
+            add_crayon_label(labels["title"], (zx - 0.85, zy + 1.25, 0.05), mats["green"], size=0.15)
+            if "status" in labels:
+                add_crayon_label(labels["status"], (zx - 0.65, zy - 0.28, 0.05), mats["gold"], size=0.13)
+        elif "arch" in labels:
+            add_crayon_label(labels["arch"], (zx - 0.70, zy - 0.22, 0.05), mats["blue"], size=0.14)
+            if "keystone" in labels:
+                add_crayon_label(labels["keystone"], (zx - 0.60, zy + 1.25, 0.05), mats["gold"], size=0.13)
+        elif "vault" in labels:
+            add_crayon_label(labels["vault"], (zx - 0.90, zy + 1.25, 0.05), mats["charcoal"], size=0.14)
+            if "status" in labels:
+                add_crayon_label(labels["status"], (zx - 0.45, zy - 0.25, 0.05), mats["green"], size=0.13)
+
+        # Connector trails between zones on continuous giant sheet
         if idx < len(zones) - 1:
             nx, ny = zones[idx + 1]
-            trail = [[(zx + 1.32, zy + 0.55), (nx - 1.32, ny + 0.55)]]
-            tr_obj = add_crayon_curve(f"Trail_{{idx}}", trail, mats["gold"], (0.0, 0.0, -0.05), thickness=0.022)
-            keyframe_draw_in(tr_obj, max(1, e_frame - 18), 18)
+            trail = [[(zx + 1.35, zy + 0.55), (nx - 1.35, ny + 0.55)]]
+            tr_obj = add_crayon_spline_object(
+                name=f"Trail_{{idx}}",
+                strokes=trail,
+                mat=mats["gold"],
+                base_loc=(0.0, 0.0, -0.05),
+                thickness=0.022,
+                spline_type="BEZIER",
+            )
+            cd = tr_obj.data
+            cd.bevel_factor_end = 0.0
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=max(1, e_frame - 18))
+            cd.bevel_factor_end = 1.0
+            cd.keyframe_insert(data_path="bevel_factor_end", frame=e_frame)
 
-        # Keyframe smooth camera glide and subtle zoom-in per Act
+        # Continuous camera glide with subtle ease and zoom
         pan_in_f = max(1, s_frame + 12) if idx > 0 else 1
         hold_f = max(pan_in_f + 5, e_frame - 12)
         mid_f = int((pan_in_f + hold_f) / 2)
@@ -486,12 +483,15 @@ def build_full_animation():
         cam_data.ortho_scale = 3.2
         cam_data.keyframe_insert(data_path="ortho_scale", frame=hold_f)
 
+    # Capture 4-keyframe snapshots for Visual Critic before animation render
+    capture_snapshots_if_requested(scene, PAYLOAD.get("preview_snapshots_dir"))
+
     print(f"[CrayonStudio] Rendering {{PAYLOAD['total_frames']}} frames to {{PAYLOAD['output_mp4_path']}}...")
     bpy.ops.render.render(animation=True)
     print("[CrayonStudio] Render finished successfully.")
 
 if __name__ == "__main__":
-    build_full_animation()
+    build_full_story()
 '''
 
     def render_project(
@@ -499,26 +499,56 @@ if __name__ == "__main__":
         project_dir: str,
         words_json_path: str,
         output_mp4_path: str,
-        category: str = "Architecture",
+        category: str = "STEM",
+        script_text: Optional[str] = None,
         duration_override: Optional[float] = None,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> str:
+        """Executes full storyboard choreography and headless Blender render."""
         os.makedirs(project_dir, exist_ok=True)
-        total_duration, scenes = self.parse_word_cues(
+
+        # 1. Recover script text if not directly passed
+        if not script_text:
+            script_txt_path = os.path.join(project_dir, "script.txt")
+            if os.path.exists(script_txt_path):
+                with open(script_txt_path, "r", encoding="utf-8") as f:
+                    script_text = f.read().strip()
+            elif os.path.exists(words_json_path):
+                try:
+                    with open(words_json_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        words = data if isinstance(data, list) else data.get("words", [])
+                        script_text = " ".join(w.get("word", "") for w in words).strip()
+                except Exception:
+                    script_text = "Educational storybook animation"
+            else:
+                script_text = "Educational storybook animation"
+
+        # 2. Choreograph universal 5-act visual blueprint
+        if progress_callback:
+            progress_callback("🎨 Choreographing dynamic visual blueprint with Bezier splines...")
+
+        choreographer = SceneChoreographer(fps=self.fps)
+        blueprint = choreographer.choreograph_project(
+            project_dir=project_dir,
+            script_text=script_text,
             words_json_path=words_json_path,
-            default_duration=duration_override or 65.0,
+            category=category,
+            duration_override=duration_override,
         )
 
+        # 3. Generate headless Blender scene script
         script_path = os.path.join(project_dir, "_run_blender_scene.py")
+        snapshots_dir = os.path.join(project_dir, "preview_snapshots")
         script_content = self._build_headless_blender_script(
-            scenes=scenes,
+            blueprint=blueprint,
             output_mp4_path=output_mp4_path,
-            total_duration=total_duration,
-            category=category,
+            preview_snapshots_dir=snapshots_dir,
         )
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(script_content)
 
+        # 4. Execute headless Blender render
         cmd = [
             self.blender_path,
             "--background",
@@ -530,7 +560,7 @@ if __name__ == "__main__":
         ]
 
         if progress_callback:
-            progress_callback(f"[Blender] Rendering {int(total_duration * self.fps)} frames across 5 continuous zones...")
+            progress_callback(f"[Blender] Rendering {blueprint['total_frames']} frames with textured paper & Bezier crayon...")
 
         process = subprocess.Popen(
             cmd,
@@ -570,6 +600,7 @@ def render_crayon_animation(
     words_json_path: str,
     output_mp4_path: str,
     category: str = "Architecture",
+    script_text: Optional[str] = None,
     blender_path: Optional[str] = None,
     progress_callback: Optional[Callable[[str], None]] = None,
 ) -> str:
@@ -579,5 +610,6 @@ def render_crayon_animation(
         words_json_path=words_json_path,
         output_mp4_path=output_mp4_path,
         category=category,
+        script_text=script_text,
         progress_callback=progress_callback,
     )
