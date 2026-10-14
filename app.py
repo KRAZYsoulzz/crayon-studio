@@ -2503,20 +2503,53 @@ class CrayonStudioApp(QMainWindow):
         proj_dir = os.path.join(PROJECTS_DIR, slug)
         sb_dir = os.path.join(proj_dir, "storyboard")
         os.makedirs(sb_dir, exist_ok=True)
-        try:
-            if sys.platform == "win32":
-                os.startfile(sb_dir)
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", sb_dir])
-            else:
-                subprocess.Popen(["xdg-open", sb_dir])
-        except Exception as e:
-            QMessageBox.critical(self, "Error Opening Folder", f"Could not open storyboard folder:\n{e}")
 
-        self.terminal_log.append(
-            f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 📂 Opened storyboard folder: {sb_dir}\n"
-            "Drop custom video clips (clip_01.mp4 ... clip_06.mp4) or full extended video (flow_omni.mp4) here."
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Flow / AI Video Clips to Import",
+            "",
+            "Video Files (*.mp4 *.mov *.mkv *.webm);;All Files (*)",
         )
+        if files:
+            files = sorted(files)
+            imported = []
+            if len(files) == 1:
+                base_name = os.path.basename(files[0])
+                if base_name.lower().startswith(("clip_", "scene_")):
+                    dest = os.path.join(sb_dir, base_name)
+                else:
+                    dest = os.path.join(sb_dir, "flow_omni.mp4")
+                shutil.copy2(files[0], dest)
+                imported.append(os.path.basename(dest))
+            else:
+                for idx, src in enumerate(files, start=1):
+                    dest = os.path.join(sb_dir, f"clip_{idx:02d}.mp4")
+                    shutil.copy2(src, dest)
+                    imported.append(os.path.basename(dest))
+
+            msg = f"✓ Successfully imported {len(imported)} clip(s) into project storyboard:\n" + "\n".join(f"• {f}" for f in imported)
+            self.terminal_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 🎬 {msg}")
+            QMessageBox.information(
+                self,
+                "Video Clips Imported",
+                f"{msg}\n\nYou can now click '🎬 Render 9:16 Video' to compose your final video with subtitles and audio!",
+            )
+        else:
+            # If dialog canceled, open Explorer folder for drag-and-drop
+            try:
+                if sys.platform == "win32":
+                    os.startfile(sb_dir)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", sb_dir])
+                else:
+                    subprocess.Popen(["xdg-open", sb_dir])
+            except Exception as e:
+                QMessageBox.critical(self, "Error Opening Folder", f"Could not open storyboard folder:\n{e}")
+
+            self.terminal_log.append(
+                f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 📂 Opened storyboard folder: {sb_dir}\n"
+                "Drop custom video clips (clip_01.mp4 ... clip_06.mp4) or full extended video (flow_omni.mp4) here."
+            )
 
     def _on_mark_ready(self):
         if not self.active_project_id:
