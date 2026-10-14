@@ -33,15 +33,15 @@ class AIStoryboardEngine:
     PIXAR_STYLE_DNA = (
         "3D Pixar style and Zack D. Films style educational 3D animation, cute expressive mechanical cutaway, "
         "rich tactile clay and stone materials with subsurface scattering, cinematic volumetric lighting, vibrant saturated color palette, "
-        "highly detailed 3D render, vertical 9:16 aspect ratio, main subject prominently centered in the upper 62% of frame, "
-        "leaving the bottom 38% completely clean and empty, no text, no words, no letters, no watermark, masterpiece 4k."
+        "highly detailed 3D render, vertical 9:16 aspect ratio, immersive full-bleed scene composition, "
+        "strictly no text, no words, no letters, no watermark, masterpiece 4k."
     )
 
     TEARDOWN_STYLE_DNA = (
         "Exploded-view 3D CAD mechanical engineering teardown animation, cute 3D isometric cutaway illustration, "
-        "precision metallic and transparent glass materials, glowing cyan and amber energy paths, clean background, "
-        "vertical 9:16 layout, central mechanism in upper 62% of frame, leaving bottom 38% completely clean and empty, "
-        "no text, no words, no letters, no watermark, masterpiece 4k."
+        "precision metallic and transparent glass materials, glowing cyan and amber energy paths, clean continuous background, "
+        "vertical 9:16 aspect ratio, immersive full-bleed scene composition, "
+        "strictly no text, no words, no letters, no watermark, masterpiece 4k."
     )
 
     def __init__(self, config_path: str = "config.json", gemini_api_key: Optional[str] = None):
@@ -276,16 +276,14 @@ class AIStoryboardEngine:
                 f"3D Pixar style educational animation of {action_desc}. "
                 f"Story context: {excerpt[:120]}. "
                 f"{dna} "
-                f"Vertical 9:16 layout, main action framed in upper 62% of screen, "
-                f"clean uncluttered bottom 38% empty for subtitles, strictly no text, no words, no letters, no watermark."
+                f"Full-bleed vertical 9:16 layout, rich continuous background, strictly no text, no words, no letters, no watermark."
             )
 
             # Standalone 3D Pixar video prompt for this specific scene cut
             omni_prompt = (
                 f"Vertical 9:16 3D Pixar style educational animation of {action_desc}. "
                 f"Story context: {excerpt[:100]}. "
-                f"Cinematic atmospheric lighting, rich volumetric depth, clean cute 3D cartoon rendering. "
-                f"Main action centered in upper 60% of frame, keep lower 38% clean and empty for captions. "
+                f"Cinematic atmospheric lighting, rich volumetric depth, clean cute 3D cartoon rendering, full-bleed vertical framing. "
                 f"Strictly no text, no words, no letters, no logos, no watermark."
             )
 
