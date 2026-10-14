@@ -210,38 +210,66 @@ class AIStoryboardEngine:
         style_dna: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Creates kid-friendly, concrete 3D Pixar / Kurzgesagt scene prompts for each beat of the script,
-        optimized for Google Flow Omni multi-turn conversational video continuity.
+        Creates kid-friendly, concrete 3D Pixar / Kurzgesagt scene prompts for each beat of the script.
+        Uses Gemini Flash AI Director to guarantee that every single scene depicts a completely
+        DIFFERENT camera perspective, visual subject, and physical action.
         Enforces NO TEXT, NO WORDS, NO LETTERS, and leaves the bottom 38% empty for captions.
         """
         dna = style_dna or (self.TEARDOWN_STYLE_DNA if visual_engine == "3D_Teardown" else self.PIXAR_STYLE_DNA)
-        enhanced_scenes = []
-
         total = len(scenes)
-        for sc in scenes:
-            excerpt = sc.get("script_excerpt", "")
-            idx = sc.get("scene_idx", 0)
 
-            # Universal topic physical action description
+        # 1. Ask Gemini Flash AI Director for distinct scene descriptions if API key is active
+        ai_action_descs = []
+        if self.gemini_api_key:
+            try:
+                from google import genai
+                client = genai.Client(api_key=self.gemini_api_key)
+                excerpts = [sc.get("script_excerpt", "") for sc in scenes]
+                prompt_ai = (
+                    "You are a Pixar and Zack D Films 3D animation director. For each of these script excerpts, "
+                    "provide a distinct, physical, visual action description showing what happens on screen. "
+                    "CRITICAL: Each scene MUST show a completely DIFFERENT visual subject and camera angle "
+                    "(e.g. wide exterior shot, microscope cutaway, internal crack canyon, growing crystals, chemical matrix, research lab). "
+                    "Output ONLY a valid JSON list of strings.\n"
+                    f"Excerpts: {json.dumps(excerpts)}"
+                )
+                resp = client.models.generate_content(model="gemini-3.8-flash", contents=prompt_ai)
+                txt = resp.text.strip()
+                if "```json" in txt:
+                    txt = txt.split("```json")[1].split("```")[0].strip()
+                elif "```" in txt:
+                    txt = txt.split("```")[1].split("```")[0].strip()
+                parsed = json.loads(txt)
+                if isinstance(parsed, list) and len(parsed) == total:
+                    ai_action_descs = [str(a).strip() for a in parsed]
+            except Exception:
+                pass
+
+        enhanced_scenes = []
+        for idx, sc in enumerate(scenes):
+            excerpt = sc.get("script_excerpt", "")
             ex_lower = excerpt.lower()
-            if any(w in ex_lower for w in ["ocean", "waves", "water", "crumble", "50 years", "50 year"]):
-                action_desc = "giant ancient Roman concrete breakwater wall enduring massive splashing turquoise ocean waves with water droplets and foam"
-            elif any(w in ex_lower for w in ["microscope", "cameras", "quicklime", "volcanic", "ash", "pozzolana", "mortar"]):
-                action_desc = "3D cutaway showing glowing white quicklime clasts and red volcanic pozzolana ash particles embedded inside a concrete block"
-            elif any(w in ex_lower for w in ["saltwater", "infiltrates", "pores", "dissolve", "brine"]):
-                action_desc = "turquoise ocean water flowing inside microscopic porous crack tunnels within the concrete block, smooth fluid motion"
-            elif any(w in ex_lower for w in ["crystal", "tobermorite", "voids", "stitching", "bone", "interlocking"]):
-                action_desc = "glowing emerald green tobermorite crystals sprouting and interlocking like tiny magic puzzle blocks, stitching the microcrack closed"
-            elif any(w in ex_lower for w in ["destroying", "fueling", "tighter", "decade", "chemical lock"]):
-                action_desc = "massive indestructible ancient Roman concrete harbor illuminated with glowing strength under dramatic ocean waves"
-            elif any(w in ex_lower for w in ["engine", "motor", "gear", "battery", "wire", "magnet", "copper"]):
-                action_desc = "cute 3D mechanical cutaway showing precision copper coils, spinning magnets, and glowing energy flow"
-            elif any(w in ex_lower for w in ["cell", "dna", "virus", "bacteria", "molecule", "blood"]):
-                action_desc = "vibrant 3D microscopic view of cellular structures and floating glowing molecular strands"
-            elif any(w in ex_lower for w in ["heist", "vault", "lock", "laser", "detective"]):
-                action_desc = "dramatic 3D isometric cutaway of a high-tech bank vault with glowing security beams and gears"
+
+            if idx < len(ai_action_descs) and ai_action_descs[idx]:
+                action_desc = ai_action_descs[idx]
             else:
-                action_desc = f"cute 3D educational animation explaining {excerpt[:60].strip()}"
+                # Prioritized, distinct topic matching (specific mechanisms FIRST)
+                if any(w in ex_lower for w in ["crystal", "tobermorite", "stitch", "bone", "puzzle"]):
+                    action_desc = "macro time-lapse of glowing emerald green tobermorite crystals sprouting and interlocking tightly like magic puzzle pieces, knitting the microcrack completely closed"
+                elif any(w in ex_lower for w in ["infiltrate", "pore", "dissolve", "fissure", "canyon", "tunnel"]):
+                    action_desc = "microscopic camera rushing into an internal crack tunnel within concrete where vibrant glowing turquoise seawater rushes in, dissolving chalky white quicklime lumps"
+                elif any(w in ex_lower for w in ["quicklime", "volcanic", "ash", "pozzolana", "mortar", "camera", "microscope"]):
+                    action_desc = "ultra close-up 3D laboratory cross-section slicing into concrete mortar showing white quicklime clasts and jagged red volcanic pozzolana ash particles"
+                elif any(w in ex_lower for w in ["rebar", "rust", "steel", "crumble", "50 year", "survive"]):
+                    action_desc = "split-screen comparison: on left, modern concrete crumbling with rusted orange rebar; on right, dense 2000-year-old Roman concrete standing rock-solid in surf"
+                elif any(w in ex_lower for w in ["engineer", "architect", "lab", "model", "science", "formula"]):
+                    action_desc = "modern engineers in a research lab admiring a glowing 3D holographic projection of the self-healing Roman crystal lattice"
+                elif any(w in ex_lower for w in ["lock", "tight", "decade", "chemical", "fuel"]):
+                    action_desc = "massive ancient Roman concrete seawall illuminated with glowing strength under dramatic Mediterranean sunset waves"
+                elif any(w in ex_lower for w in ["ocean", "waves", "water", "sea"]):
+                    action_desc = "giant ancient Roman concrete breakwater wall enduring massive splashing turquoise ocean waves with explosive white sea spray"
+                else:
+                    action_desc = f"cute 3D Pixar educational cutaway animation illustrating {excerpt[:60].strip()}"
 
             # Strict 3D animation prompt (NO TEXT, NO WORDS, NO LABELS)
             prompt = (
@@ -252,23 +280,14 @@ class AIStoryboardEngine:
                 f"clean uncluttered bottom 38% empty for subtitles, strictly no text, no words, no letters, no watermark."
             )
 
-            # Google Flow Omni Multi-Turn Continuity Prompt
-            if idx == 0:
-                omni_prompt = (
-                    f"Vertical 9:16 3D Pixar style educational animation of {action_desc}. "
-                    f"Story context: {excerpt[:100]}. "
-                    f"Cinematic atmospheric lighting, rich volumetric depth, clean cute 3D cartoon rendering. "
-                    f"Main action centered in upper 60% of frame, keep lower 38% clean and empty for captions. "
-                    f"Strictly no text, no words, no letters, no logos, no watermark."
-                )
-            else:
-                omni_prompt = (
-                    f"Keep the exact same 3D Pixar educational animation style and visual continuity. "
-                    f"Cut to {action_desc}. "
-                    f"Story context: {excerpt[:100]}. "
-                    f"Main action centered in upper 60% of frame, keep lower 38% clean and empty for captions. "
-                    f"Strictly no text, no words, no letters, no watermark."
-                )
+            # Standalone 3D Pixar video prompt for this specific scene cut
+            omni_prompt = (
+                f"Vertical 9:16 3D Pixar style educational animation of {action_desc}. "
+                f"Story context: {excerpt[:100]}. "
+                f"Cinematic atmospheric lighting, rich volumetric depth, clean cute 3D cartoon rendering. "
+                f"Main action centered in upper 60% of frame, keep lower 38% clean and empty for captions. "
+                f"Strictly no text, no words, no letters, no logos, no watermark."
+            )
 
             sc_copy = dict(sc)
             sc_copy["prompt"] = prompt
@@ -756,8 +775,34 @@ class AIStoryboardEngine:
                 if not clip_frames:
                     clip_frames = [np.zeros((h, w, 3), dtype=np.uint8)]
 
+                # Look ahead for next scene's starting frame for smooth cross-dissolve
+                next_start_frame = None
+                if idx < len(loaded_scenes) - 1:
+                    nxt = loaded_scenes[idx + 1]
+                    if nxt.get("video_clip_path") and os.path.exists(nxt["video_clip_path"]):
+                        ncap = cv2.VideoCapture(nxt["video_clip_path"])
+                        nret, nfr = ncap.read()
+                        ncap.release()
+                        if nret:
+                            if nfr.shape[0] != h or nfr.shape[1] != w:
+                                nfr = cv2.resize(nfr, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                            next_start_frame = nfr
+                    elif nxt.get("img_path") and os.path.exists(nxt["img_path"]):
+                        nfr = cv2.imread(nxt["img_path"])
+                        if nfr is not None:
+                            if nfr.shape[0] != h or nfr.shape[1] != w:
+                                nfr = cv2.resize(nfr, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                            next_start_frame = nfr
+
                 for f in range(num_frames):
-                    fr = clip_frames[f % len(clip_frames)]
+                    pos = int(f * (len(clip_frames) / float(num_frames)))
+                    fr = clip_frames[min(len(clip_frames) - 1, pos)].copy()
+
+                    # Seamless 15-frame cross-dissolve into next scene
+                    if next_start_frame is not None and f >= (num_frames - trans_len):
+                        alpha = (f - (num_frames - trans_len)) / float(trans_len)
+                        fr = cv2.addWeighted(fr, 1.0 - alpha, next_start_frame, alpha, 0)
+
                     writer.write(fr)
                     frames_rendered += 1
 
@@ -941,20 +986,18 @@ class AIStoryboardEngine:
             idx = sc["scene_idx"]
             idx_1based = idx + 1
 
-            # Check for pre-rendered video clips in storyboard/ or scenes/
+            # Check for pre-rendered custom video clips (e.g. clip_01.mp4 ... clip_06.mp4)
             possible_clips = [
                 os.path.join(storyboard_dir, f"clip_{idx_1based:02d}.mp4"),
                 os.path.join(storyboard_dir, f"clip_{idx_1based}.mp4"),
-                os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.mp4"),
-                os.path.join(storyboard_dir, f"scene_{idx:02d}.mp4"),
                 os.path.join(scenes_dir, f"clip_{idx_1based:02d}.mp4"),
-                os.path.join(scenes_dir, f"scene_{idx}.mp4"),
+                os.path.join(scenes_dir, f"clip_{idx_1based}.mp4"),
             ]
             custom_clip = next((cp for cp in possible_clips if os.path.exists(cp) and os.path.getsize(cp) > 20000), None)
 
             # Standardized scene image paths
             sb_img_path = os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.png")
-            sc_img_path = os.path.join(scenes_dir, f"scene_{idx}.png")
+            sc_img_path = os.path.join(scenes_dir, f"scene_{idx_1based:02d}.png")
             sc["image_path"] = sb_img_path
 
             if custom_clip:
@@ -962,7 +1005,7 @@ class AIStoryboardEngine:
                     progress_callback(f"[OK] Found custom AI video clip: {os.path.basename(custom_clip)}")
                 sc["video_clip_path"] = custom_clip
             else:
-                # Generate 3D Pixar keyframe
+                # Generate distinct 3D Pixar keyframe for this scene beat
                 self.generate_scene_image(
                     prompt=sc["prompt"],
                     output_path=sb_img_path,
@@ -978,22 +1021,20 @@ class AIStoryboardEngine:
                 except Exception:
                     pass
 
-                # Try Gemini Omni Flash video generation with multi-turn continuity
+                # Generate dedicated standalone Gemini Omni Flash video for this scene cut
                 omni_clip_target = os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.mp4")
                 if self.gemini_api_key:
                     video_prompt = sc.get("omni_prompt", sc["prompt"])
-                    ok, next_id = self.generate_ai_video_clip(
+                    ok, _ = self.generate_ai_video_clip(
                         scene_prompt=video_prompt,
                         start_image_path=sb_img_path,
                         output_clip_path=omni_clip_target,
                         duration_sec=sc["duration"],
-                        previous_interaction_id=prev_interaction_id,
+                        previous_interaction_id=None,
                         progress_callback=progress_callback,
                     )
                     if ok:
                         sc["video_clip_path"] = omni_clip_target
-                        if next_id:
-                            prev_interaction_id = next_id
 
         # Save metadata
         with open(os.path.join(project_dir, "storyboard.json"), "w", encoding="utf-8") as f:

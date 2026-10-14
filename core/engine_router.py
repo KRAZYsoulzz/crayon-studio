@@ -30,9 +30,9 @@ class VisualEngineRouter:
     ENGINE_BLENDER = "Blender_Legacy"
 
     DISPLAY_NAMES = {
-        "2D_Crayon": "🎨 Engine A: AI Storyboard & Sketch-Reveal (Continuous Storybook)",
-        "3D_Teardown": "⚙️ Engine B: 3D AI Hardware Teardown (Exploded View & X-Ray)",
-        "Blender_Legacy": "🏛️ Legacy Blender 3D Curves",
+        "2D_Crayon": "[2D Crayon] AI Storyboard & Sketch-Reveal (Continuous Storybook)",
+        "3D_Teardown": "[3D Teardown] AI Hardware Teardown (Exploded View & X-Ray)",
+        "Blender_Legacy": "[Blender] Legacy Blender 3D Curves",
     }
 
     def __init__(
@@ -77,7 +77,7 @@ class VisualEngineRouter:
                 progress_callback(msg)
             logger.info(msg)
 
-        _cb(f"🚀 Initializing {self.get_display_name(self.visual_engine)}...")
+        _cb(f"[Engine] Initializing {self.get_display_name(self.visual_engine)}...")
 
         if self.visual_engine == self.ENGINE_BLENDER:
             engine = BlenderOrchestrator(blender_path=self.blender_path)
@@ -104,7 +104,7 @@ class VisualEngineRouter:
             )
 
         # Run Visual Critic 4-Keyframe automated inspection
-        _cb("🔍 Running Visual Critic 4-Keyframe automated inspection...")
+        _cb("[Critic] Running Visual Critic 4-Keyframe automated inspection...")
         critic_report = generate_and_verify_snapshots(
             video_path=rendered_video,
             project_dir=project_dir,
@@ -112,7 +112,7 @@ class VisualEngineRouter:
             ffmpeg_path=self.ffmpeg_path,
         )
 
-        status_icon = "✓" if critic_report.get("passed") else "⚠️"
+        status_icon = "[OK]" if critic_report.get("passed") else "[WARN]"
         _cb(f"{status_icon} Visual Critic Report: {critic_report.get('notes', 'Inspection finished')}")
 
         return {
