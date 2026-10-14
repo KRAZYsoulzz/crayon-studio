@@ -477,7 +477,7 @@ class PipelineWorker(QThread):
             self.log_message.emit("⏱️ Extracting word-level timestamps with faster-whisper...")
             self.progress_val.emit(65)
             words_json_path = os.path.join(proj_dir, "words_timestamp.json")
-            words_list = extract_word_timestamps(vo_path, words_json_path)
+            words_list = extract_word_timestamps(vo_path, words_json_path, script_text=self.script_text)
             self.log_message.emit(f"✓ Aligned {len(words_list)} words saved to: {words_json_path}")
 
             # Calculate actual audio duration from word timestamps or soundfile
@@ -603,9 +603,14 @@ class VerticalPreviewCanvas(QWidget):
         self.title_text = "CrayonStudio Vertical Player"
         self.hook_text = "Watch what happens next..."
         self.category = "STEM"
-        self.playback_pos_ms = 0
+        self.words: List[Dict[str, Any]] = []
         self.total_duration_ms = 65000
         self.is_playing = False
+
+    def set_word_timestamps(self, words: List[Dict[str, Any]]):
+        """Sets word timestamps for live dynamic kinetic subtitle rendering."""
+        self.words = words or []
+        self.update()
 
     def update_metadata(self, title: str, hook: str, category: str):
         self.title_text = title
@@ -714,22 +719,57 @@ class VerticalPreviewCanvas(QWidget):
                 2,
             )
 
-        # Hook / Kinetic Subtitle Overlay
+        # Dynamic Kinetic Subtitle Overlay
+        current_sec = self.playback_pos_ms / 1000.0
+        active_subtitle = ""
+        active_word_str = ""
+
+        if self.words:
+            active_idx = -1
+            for idx, w in enumerate(self.words):
+                if w.get("start", 0.0) <= current_sec <= w.get("end", 0.0) + 0.12:
+                    active_idx = idx
+                    active_word_str = w.get("word", "")
+                    break
+
+            if active_idx == -1:
+                for idx in range(len(self.words) - 1, -1, -1):
+                    if self.words[idx].get("start", 0.0) <= current_sec:
+                        active_idx = idx
+                        active_word_str = self.words[idx].get("word", "")
+                        break
+
+            if active_idx != -1:
+                chunk_start = max(0, active_idx - 1)
+                chunk_end = min(len(self.words), chunk_start + 4)
+                words_chunk = [self.words[k].get("word", "") for k in range(chunk_start, chunk_end)]
+                active_subtitle = " ".join(words_chunk)
+            elif current_sec < (self.words[0].get("start", 0.0) if self.words else 0.5):
+                active_subtitle = self.hook_text or self.title_text
+        else:
+            active_subtitle = self.hook_text or self.title_text
+
+        if not active_subtitle:
+            active_subtitle = self.hook_text or self.title_text
+
         painter.setPen(QColor("#FFFFFF"))
-        sub_font = QFont("Segoe UI", 11, QFont.Bold)
+        sub_font = QFont("Segoe UI", 12, QFont.Bold)
         painter.setFont(sub_font)
         text_rect = painter.fontMetrics().boundingRect(
-            x + 20,
-            center_y + 130,
-            target_w - 40,
-            80,
+            x + 16,
+            center_y + 120,
+            target_w - 32,
+            90,
             Qt.AlignCenter | Qt.TextWordWrap,
-            self.hook_text or self.title_text,
+            active_subtitle,
         )
-        # Background shadow card for subtitle
-        painter.setBrush(QColor(0, 0, 0, 180))
-        painter.drawRoundedRect(text_rect.adjusted(-8, -4, 8, 4), 6, 6)
-        painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.hook_text or self.title_text)
+        # Background shadow card with dynamic highlight border
+        painter.setBrush(QColor(16, 16, 16, 220))
+        border_color = QColor("#FFD700") if active_word_str else QColor("#0078D4")
+        painter.setPen(QPen(border_color, 2))
+        painter.drawRoundedRect(text_rect.adjusted(-10, -6, 10, 6), 8, 8)
+        painter.setPen(QColor("#FFFFFF"))
+        painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, active_subtitle)
 
 
 # =====================================================================
@@ -2013,6 +2053,13 @@ class CrayonStudioApp(QMainWindow):
             hook=payload.get("script_text", "").split(".")[0],
             category=payload.get("category", "STEM"),
         )
+        words_json = payload.get("words_json_path")
+        if words_json and os.path.exists(words_json):
+            try:
+                with open(words_json, "r", encoding="utf-8") as f:
+                    self.preview_canvas.set_word_timestamps(json.load(f))
+            except Exception:
+                pass
 
         # Load media in player
         if vo_path and os.path.exists(vo_path):
@@ -2394,6 +2441,13 @@ class CrayonStudioApp(QMainWindow):
             hook=proj.get("hook") or proj.get("title", ""),
             category=cat,
         )
+        words_json = os.path.join(proj_dir, "words_timestamp.json")
+        if os.path.exists(words_json):
+            try:
+                with open(words_json, "r", encoding="utf-8") as f:
+                    self.preview_canvas.set_word_timestamps(json.load(f))
+            except Exception:
+                pass
 
         self.tab_widget.setCurrentIndex(1)
         self.status_bar.showMessage(f"Project '{proj.get('title')}' loaded into Production Studio.", 3000)
