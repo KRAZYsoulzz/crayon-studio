@@ -2532,7 +2532,7 @@ class CrayonStudioApp(QMainWindow):
             QMessageBox.information(
                 self,
                 "Video Clips Imported",
-                f"{msg}\n\nYou can now click '🎬 Render 9:16 Video' to compose your final video with subtitles and audio!",
+                f"{msg}\n\nYou can now click '🎨 Render AI Storyboard Video' to compose your final video with subtitles and audio!",
             )
         else:
             # If dialog canceled, open Explorer folder for drag-and-drop
