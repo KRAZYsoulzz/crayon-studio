@@ -1047,12 +1047,13 @@ class CrayonStudioApp(QMainWindow):
 
         # Row 0: Title & Category
         mc_layout.addWidget(QLabel("Project Title:"), 0, 0)
-        self.input_title = QLineEdit("The 2000-Year-Old Concrete Secret")
+        self.input_title = QLineEdit("The 2,000-Year Ancient Roman Concrete Secret")
         mc_layout.addWidget(self.input_title, 0, 1)
 
         mc_layout.addWidget(QLabel("Category:"), 0, 2)
         self.combo_category = QComboBox()
         self.combo_category.addItems(["STEM", "How It's Made", "Engineering", "Escape/Heist", "Architecture", "Psychology"])
+        self.combo_category.setCurrentText("Architecture")
         self.combo_category.currentTextChanged.connect(self._on_category_changed)
         mc_layout.addWidget(self.combo_category, 0, 3)
 
@@ -1105,15 +1106,14 @@ class CrayonStudioApp(QMainWindow):
         # Script text editor
         self.text_script = QTextEdit()
         default_script = (
-            "Why can ancient Roman harbors withstand two thousand years of crashing ocean waves, while modern concrete structures crack and crumble after fifty years? "
-            "Scientists finally unlocked this mystery using electron microscopes and high-energy X-ray diffraction. "
-            "The Romans didn't just mix sand and gravel; they forged their concrete using reactive volcanic ash called pozzolana, slaked lime, and seawater. "
-            "When saltwater infiltrates the microscopic pores, it doesn't degrade the internal framework. "
-            "Instead, it dissolves the volcanic ash and triggers an active hydrothermal reaction. "
-            "This chemical reaction precipitates interlocking crystals of a rare mineral called aluminous tobermorite. "
-            "These microscopic crystals expand into microscopic voids like biological bone tissue, sealing microcracks before structural damage can spread. "
-            "Instead of eroding the seawall, the immense hydraulic pressure of the ocean actually cements the Roman concrete tighter with every single passing decade. "
-            "Modern architects are now racing to replicate this self-healing chemistry for new deep-sea mega-structures, but it all begins by questioning:"
+            "Ancient Roman concrete gets stronger the longer it sits in crashing ocean waves, while modern concrete crumbles in fifty years. "
+            "For decades, modern civil engineers couldn't figure out why ancient harbors in Italy survived two millennia of salt water erosion. "
+            "The breakthrough came when geologists put Roman seawalls under electron microscopes. "
+            "The Romans didn't just mix sand and gravel; they forged their concrete using reactive volcanic ash called pozzolana, slaked lime, and chunks of quicklime hot-mixed together. "
+            "When ocean saltwater infiltrates the microscopic pores, it doesn't rot the internal framework. "
+            "Instead, the alkaline brine dissolves the volcanic minerals and reacts with the lime clasts, precipitating interlocking crystals of a rare mineral called aluminous tobermorite. "
+            "These microscopic crystals expand into microscopic voids, literally stitching microcracks closed like living bone tissue. "
+            "The ocean isn't destroying the seawall—it's actively fueling the chemical reaction that cements it tighter with every passing decade, which is why modern architects are still racing to replicate how ancient Roman concrete gets stronger the longer it sits in crashing ocean waves."
         )
         self.text_script.setPlainText(default_script)
         self.text_script.textChanged.connect(self._on_script_text_changed)
