@@ -21,6 +21,8 @@ logger = logging.getLogger("crayon_studio.ai_modifier")
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
+# Script models, tried in order (Google sometimes returns 503 for individual models).
+SCRIPT_MODELS = ("gemini-3.8-flash", "gemini-3.5-flash")
 _LAST_AI_STATUS: str = "OK"
 
 
@@ -319,8 +321,12 @@ def modify_script(
     if resolved_key and usage_tracker.api_status != "Depleted_402":
         try:
             from google import genai
+            from google.genai import types
 
-            client = genai.Client(api_key=resolved_key)
+            client = genai.Client(
+                api_key=resolved_key,
+                http_options=types.HttpOptions(timeout=45_000, retry_options=types.HttpRetryOptions(attempts=1)),
+            )
 
             if not existing:
                 context_bits = []
@@ -387,22 +393,33 @@ def modify_script(
 
             from core.usage_tracker import usage_tracker
 
-            interaction = client.interactions.create(
-                model="gemini-3.8-flash",
-                input=gen_prompt,
-                store=False,
-            )
-            output_text = getattr(interaction, "output_text", None)
-            if output_text and len(output_text.strip().split()) >= 30:
-                usage_tracker.record_interaction(
-                    "gemini-3.8-flash",
-                    "script_generation",
-                    interaction,
-                    prompt_chars=len(gen_prompt),
-                    output_chars=len(output_text),
-                )
-                cleaned = _clean_spoken_prose(output_text)
-                return cleaned
+            last_err: Optional[Exception] = None
+            for model_name in SCRIPT_MODELS:
+                try:
+                    interaction = client.interactions.create(
+                        model=model_name,
+                        input=gen_prompt,
+                        store=False,
+                    )
+                except Exception as model_err:
+                    last_err = model_err
+                    if "402" in str(model_err):
+                        break  # billing problem: another model will not help
+                    logger.warning("%s script call failed (%s). Trying next model.", model_name, model_err)
+                    continue
+                output_text = getattr(interaction, "output_text", None)
+                if output_text and len(output_text.strip().split()) >= 30:
+                    usage_tracker.record_interaction(
+                        model_name,
+                        "script_generation",
+                        interaction,
+                        prompt_chars=len(gen_prompt),
+                        output_chars=len(output_text),
+                    )
+                    cleaned = _clean_spoken_prose(output_text)
+                    return cleaned
+            if last_err is not None:
+                raise last_err
         except Exception as e:
             from core.usage_tracker import usage_tracker
 
