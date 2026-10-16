@@ -158,11 +158,11 @@ def _synthesize_offline_script(
 ) -> str:
     """Natural, standalone factual script generator when Gemini API credits are depleted (HTTP 402) or offline.
 
-    Generates 61-70 second scripts (145-165 words) for TikTok Creator Rewards monetization.
+    Generates 61-70 second scripts (165-180 words) for TikTok Creator Rewards monetization.
     Never inserts the raw video title as a mad-lib ('Inside How Sand Turns to Glass').
     """
     t_lower = (topic or "").lower()
-    target_words = max(145, int(round(target_duration * 2.35)))
+    target_words = max(165, int(round(target_duration * 2.6)))
 
     # Built-in high-craft standalone scripts for common physical/engineering topics + Wikipedia factual synthesis
     if "sand" in t_lower and "glass" in t_lower:
@@ -306,9 +306,9 @@ def modify_script(
 
     resolved_key = _resolve_gemini_api_key(api_key)
     existing = script_text.strip()
-    target_words = max(145, int(round(target_duration * 2.35)))
-    min_words = max(140, target_words - 8)
-    max_words = min(170, target_words + 10)
+    target_words = max(165, int(round(target_duration * 2.6)))
+    min_words = 165
+    max_words = 180
 
     has_product = bool(tiktok_product and tiktok_product.strip() and "none" not in tiktok_product.lower())
     product_instruction = (
@@ -386,7 +386,6 @@ def modify_script(
                         model=model_name,
                         input=gen_prompt,
                         store=False,
-                        timeout=60.0,
                     )
                 except Exception as model_err:
                     last_err = model_err

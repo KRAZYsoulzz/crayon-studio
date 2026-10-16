@@ -2,7 +2,7 @@ import os
 import re
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QPlainTextEdit, QComboBox, QScrollArea
+    QPlainTextEdit, QComboBox, QScrollArea, QMenu
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QCursor
@@ -41,9 +41,9 @@ class SceneCardWidget(GlassCard):
         right_col = QVBoxLayout()
         right_col.setSpacing(6)
 
-        # Header Row: Scene #, Timecode, Status Pill, Mode Selector, Redo Button
+        # Header Row: Scene #, Timecode, Status Pill, Redo, Delete
         header = QHBoxLayout()
-        header.setSpacing(8)
+        header.setSpacing(6)
 
         scene_num = int(self.scene_data.get("scene_idx", self.index)) + 1
         start_t = float(self.scene_data.get("start_time", self.scene_data.get("start", 0.0)))
@@ -59,18 +59,6 @@ class SceneCardWidget(GlassCard):
 
         header.addStretch()
 
-        self.combo_mode = QComboBox()
-        self.combo_mode.addItem("Auto", "auto")
-        self.combo_mode.addItem("2.5D Motion", "keyframe")
-        self.combo_mode.addItem("Wan Video", "omni_video")
-        current_mode = self.scene_data.get("render_mode", self.scene_data.get("scene_mode", "auto"))
-        idx = self.combo_mode.findData(current_mode)
-        if idx >= 0:
-            self.combo_mode.setCurrentIndex(idx)
-        self.combo_mode.setFixedWidth(120)
-        self.combo_mode.currentIndexChanged.connect(self._on_mode_changed)
-        header.addWidget(self.combo_mode)
-
         self.btn_regen = QPushButton("Redo")
         self.btn_regen.setProperty("class", "chip")
         self.btn_regen.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -78,7 +66,7 @@ class SceneCardWidget(GlassCard):
         self.btn_regen.clicked.connect(self._on_regenerate_clicked)
         header.addWidget(self.btn_regen)
 
-        self.btn_delete = QPushButton("Delete")
+        self.btn_delete = QPushButton("✕")
         self.btn_delete.setProperty("class", "chip")
         self.btn_delete.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_delete.setToolTip("Delete this scene")
@@ -94,11 +82,27 @@ class SceneCardWidget(GlassCard):
         self.lbl_narration.setStyleSheet("color: #a1a1a6; font-size: 12px; background: transparent;")
         right_col.addWidget(self.lbl_narration)
 
-        # What appears on screen (Plain English editable description)
+        # What appears on screen (Plain English editable description) + Mode Selector
+        prompt_hdr = QHBoxLayout()
+        prompt_hdr.setSpacing(6)
         lbl_vis_hint = QLabel("SCENE ACTION & PROMPT")
         lbl_vis_hint.setProperty("class", "eyebrow")
         lbl_vis_hint.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; background: transparent;")
-        right_col.addWidget(lbl_vis_hint)
+        prompt_hdr.addWidget(lbl_vis_hint)
+        prompt_hdr.addStretch()
+
+        self.combo_mode = QComboBox()
+        self.combo_mode.addItem("Auto", "auto")
+        self.combo_mode.addItem("2.5D Motion", "keyframe")
+        self.combo_mode.addItem("Wan Video", "omni_video")
+        current_mode = self.scene_data.get("render_mode", self.scene_data.get("scene_mode", "auto"))
+        idx = self.combo_mode.findData(current_mode)
+        if idx >= 0:
+            self.combo_mode.setCurrentIndex(idx)
+        self.combo_mode.setFixedWidth(105)
+        self.combo_mode.currentIndexChanged.connect(self._on_mode_changed)
+        prompt_hdr.addWidget(self.combo_mode)
+        right_col.addLayout(prompt_hdr)
 
         self.txt_prompt = QPlainTextEdit()
         display_prompt = self.scene_data.get("action_desc") or self.scene_data.get("prompt", "")
@@ -214,41 +218,45 @@ class StoryboardInspectorWidget(QWidget):
         toolbar.setSpacing(8)
 
         self.lbl_summary = QLabel("Scenes will appear here automatically once your script is written.")
+        self.lbl_summary.setWordWrap(True)
         self.lbl_summary.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 12px; background: transparent;")
-        toolbar.addWidget(self.lbl_summary)
+        toolbar.addWidget(self.lbl_summary, stretch=1)
 
         toolbar.addStretch()
 
-        self.btn_add_scene = QPushButton("Add Scene")
+        self.btn_add_scene = QPushButton("+ Scene")
         self.btn_add_scene.setProperty("class", "chip")
         self.btn_add_scene.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_add_scene.setToolTip("Add a new scene to the end of the storyboard")
         self.btn_add_scene.clicked.connect(self._add_empty_scene)
         toolbar.addWidget(self.btn_add_scene)
 
-        self.btn_auto_segment = QPushButton("Sync from Script")
+        self.btn_auto_segment = QPushButton("Sync")
         self.btn_auto_segment.setProperty("class", "chip")
         self.btn_auto_segment.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_auto_segment.setToolTip("Auto-generate scenes synchronized to current script timing")
         self.btn_auto_segment.clicked.connect(self.auto_segment_requested.emit)
         toolbar.addWidget(self.btn_auto_segment)
 
-        self.btn_copy_prompts = QPushButton("Copy Prompts")
-        self.btn_copy_prompts.setProperty("class", "chip")
-        self.btn_copy_prompts.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        # Actions Menu for secondary operations (Copy Prompts, Import Clips, Clear All)
+        self.btn_actions = QPushButton("Actions ▾")
+        self.btn_actions.setProperty("class", "chip")
+        self.btn_actions.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        actions_menu = QMenu(self)
+        actions_menu.addAction("Copy Prompts for Omni / Wan", self.copy_prompts_requested.emit)
+        actions_menu.addAction("Import Clips into Storyboard...", self.import_clips_requested.emit)
+        actions_menu.addSeparator()
+        actions_menu.addAction("Clear All Scenes", self.clear_all_scenes)
+        self.btn_actions.setMenu(actions_menu)
+        toolbar.addWidget(self.btn_actions)
+
+        # Legacy references kept for full backward compatibility
+        self.btn_copy_prompts = QPushButton()
         self.btn_copy_prompts.clicked.connect(self.copy_prompts_requested.emit)
-        toolbar.addWidget(self.btn_copy_prompts)
-
-        self.btn_import_clips = QPushButton("Import Clips")
-        self.btn_import_clips.setProperty("class", "chip")
-        self.btn_import_clips.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_import_clips = QPushButton()
         self.btn_import_clips.clicked.connect(self.import_clips_requested.emit)
-        toolbar.addWidget(self.btn_import_clips)
-
-        self.btn_clear_scenes = QPushButton("Clear All")
-        self.btn_clear_scenes.setProperty("class", "chip")
-        self.btn_clear_scenes.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_clear_scenes.setToolTip("Remove all scene cards and reset preview canvas")
+        self.btn_clear_scenes = QPushButton()
         self.btn_clear_scenes.clicked.connect(self.clear_all_scenes)
-        toolbar.addWidget(self.btn_clear_scenes)
 
         layout.addLayout(toolbar)
 

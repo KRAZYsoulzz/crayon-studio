@@ -222,7 +222,6 @@ class AIStoryboardEngine:
                                 model=m_name,
                                 input=[img_part, {"type": "text", "text": prompt}],
                                 store=False,
-                                timeout=60.0,
                             )
                             break
                         except Exception:
@@ -432,7 +431,6 @@ class AIStoryboardEngine:
                             model=m_name,
                             input=prompt_ai,
                             store=False,
-                            timeout=60.0,
                             response_format={
                                 "type": "text",
                                 "mime_type": "application/json",

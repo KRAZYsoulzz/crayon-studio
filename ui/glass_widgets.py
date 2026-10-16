@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QFrame, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
     QDialog, QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal, QRectF, QUrl, QPoint
+from PySide6.QtCore import Qt, Signal, QRectF, QUrl, QPoint, QSize
 from PySide6.QtGui import (
     QPainter, QColor, QPen, QPainterPath, QDesktopServices, QCursor
 )
@@ -255,6 +255,9 @@ class SelectableStyleCard(QFrame):
         """)
         layout.addWidget(self.lbl_desc)
 
+    def minimumSizeHint(self) -> QSize:
+        return QSize(70, 48)
+
     def _style_badge(self):
         txt = self.lbl_badge.text()
         if "Popular" in txt or "Standard" in txt or "Recommended" in txt or "Balanced" in txt:
@@ -351,10 +354,10 @@ class StepIndicatorBar(QFrame):
     ]
 
     STEP_CTAS = [
-        "Write Script ⌘↵",
-        "Build Scenes ⌘↵",
-        "Render Video ⌘↵",
-        "Export Video (.MP4)",
+        "Write Script",
+        "Build Scenes",
+        "Render Video",
+        "Export (.MP4)",
     ]
 
     def __init__(self, parent: Optional[QWidget] = None):

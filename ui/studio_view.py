@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QPlainTextEdit, QComboBox, QSpinBox,
     QSplitter, QProgressBar, QFileDialog, QScrollArea, QFrame,
-    QSizePolicy
+    QSizePolicy, QMenu
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCursor, QTextOption
@@ -65,13 +65,16 @@ class StudioView(QWidget):
         outer.addWidget(self.step_bar)
 
         # Main Scrollable Area for workspace content
-        main_scroll = QScrollArea()
-        main_scroll.setWidgetResizable(True)
-        main_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        main_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # Main Scrollable Area for workspace content
+        self.main_scroll = QScrollArea()
+        self.main_scroll.setWidgetResizable(True)
+        self.main_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.main_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
+        self.scroll_content = QWidget()
+        self.scroll_content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.scroll_content.setMinimumWidth(0)
+        scroll_layout = QVBoxLayout(self.scroll_content)
         scroll_layout.setContentsMargins(0, 0, 4, 0)
         scroll_layout.setSpacing(10)
 
@@ -101,6 +104,12 @@ class StudioView(QWidget):
         topic_hdr.addWidget(lbl_step1)
         topic_hdr.addStretch()
 
+        self.btn_find_trends = QPushButton("Topic Finder")
+        self.btn_find_trends.setProperty("class", "chip")
+        self.btn_find_trends.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_find_trends.clicked.connect(self.open_research_requested.emit)
+        topic_hdr.addWidget(self.btn_find_trends)
+
         self.btn_extras_toggle = QPushButton("Options ▸")
         self.btn_extras_toggle.setProperty("class", "chip")
         self.btn_extras_toggle.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -123,35 +132,32 @@ class StudioView(QWidget):
         topic_input_row.addWidget(self.btn_generate_script)
         s1_layout.addLayout(topic_input_row)
 
-        # Suggestions Row
+        # Suggestions Row (2 compact chips + next)
         ideas_row = QHBoxLayout()
         ideas_row.setSpacing(6)
-        lbl_ideas = QLabel("Suggestions:")
+        lbl_ideas = QLabel("Ideas:")
         lbl_ideas.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; font-weight: 500; background: transparent;")
         ideas_row.addWidget(lbl_ideas)
 
         self.idea_chip_buttons: list[QPushButton] = []
-        for _ in range(3):
+        for _ in range(2):
             chip = QPushButton()
             chip.setProperty("class", "chip")
             chip.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            chip.setMaximumWidth(160)
+            chip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             chip.clicked.connect(self._on_idea_chip_clicked)
             ideas_row.addWidget(chip)
             self.idea_chip_buttons.append(chip)
 
         ideas_row.addStretch()
 
-        self.btn_more_ideas = QPushButton("Cycle Ideas")
+        self.btn_more_ideas = QPushButton("↻ Next")
         self.btn_more_ideas.setProperty("class", "chip")
+        self.btn_more_ideas.setFixedWidth(58)
         self.btn_more_ideas.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_more_ideas.clicked.connect(self._cycle_idea_bank)
         ideas_row.addWidget(self.btn_more_ideas)
-
-        self.btn_find_trends = QPushButton("Topic Finder")
-        self.btn_find_trends.setProperty("class", "chip")
-        self.btn_find_trends.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_find_trends.clicked.connect(self.open_research_requested.emit)
-        ideas_row.addWidget(self.btn_find_trends)
 
         s1_layout.addLayout(ideas_row)
         self._populate_idea_chips()
@@ -194,13 +200,15 @@ class StudioView(QWidget):
             self.mode_cards[key] = mc
         s1_layout.addLayout(mode_cards_h)
 
-        # Collapsible Optional Extras Drawer
+        # Collapsible Optional Extras Drawer (2 clean rows)
         self.extras_widget = QWidget()
-        extras_layout = QHBoxLayout(self.extras_widget)
-        extras_layout.setContentsMargins(0, 4, 0, 0)
-        extras_layout.setSpacing(10)
+        extras_v = QVBoxLayout(self.extras_widget)
+        extras_v.setContentsMargins(0, 4, 0, 0)
+        extras_v.setSpacing(6)
 
-        extras_layout.addWidget(QLabel("Category:"))
+        r1 = QHBoxLayout()
+        r1.setSpacing(8)
+        r1.addWidget(QLabel("Category:"))
         self.combo_category = QComboBox()
         self.combo_category.addItems([
             "STEM",
@@ -211,28 +219,33 @@ class StudioView(QWidget):
             "Psychology",
         ])
         self.combo_category.currentTextChanged.connect(self._on_any_change)
-        extras_layout.addWidget(self.combo_category)
+        r1.addWidget(self.combo_category)
 
         lbl_dur = QLabel("Target Duration:")
         lbl_dur.setStyleSheet("color: #f3f4f6; font-weight: 500; background: transparent;")
-        extras_layout.addWidget(lbl_dur)
+        r1.addWidget(lbl_dur)
         self.spin_duration = QSpinBox()
         self.spin_duration.setRange(30, 120)
         self.spin_duration.setValue(65)
-        self.spin_duration.setSuffix(" sec (61-70s TikTok)")
+        self.spin_duration.setSuffix("s (61-70s TikTok)")
         self.spin_duration.valueChanged.connect(self._on_duration_or_script_changed)
-        extras_layout.addWidget(self.spin_duration)
+        r1.addWidget(self.spin_duration)
+        r1.addStretch()
+        extras_v.addLayout(r1)
 
-        extras_layout.addWidget(QLabel("Product Mention:"))
+        r2 = QHBoxLayout()
+        r2.setSpacing(8)
+        r2.addWidget(QLabel("Product:"))
         self.input_product = QLineEdit()
-        self.input_product.setPlaceholderText("Leave blank for educational...")
+        self.input_product.setPlaceholderText("Optional sponsor / product mention...")
         self.input_product.textChanged.connect(self._on_any_change)
-        extras_layout.addWidget(self.input_product, stretch=1)
+        r2.addWidget(self.input_product, stretch=1)
 
         self.btn_pick_style_ref = QPushButton("Custom Style Image...")
         self.btn_pick_style_ref.setProperty("class", "chip")
         self.btn_pick_style_ref.clicked.connect(self._pick_style_ref)
-        extras_layout.addWidget(self.btn_pick_style_ref)
+        r2.addWidget(self.btn_pick_style_ref)
+        extras_v.addLayout(r2)
 
         # Hidden synchronized combos for programmatic access
         self.combo_style = QComboBox()
@@ -241,7 +254,7 @@ class StudioView(QWidget):
         self.combo_style.addItem("2D Storybook", "2D_Kurzgesagt")
         self.combo_style.currentIndexChanged.connect(self._sync_cards_from_combos)
         self.combo_style.setVisible(False)
-        extras_layout.addWidget(self.combo_style)
+        extras_v.addWidget(self.combo_style)
 
         self.combo_render_mode = QComboBox()
         self.combo_render_mode.addItem("Smart Hybrid", "smart_hybrid")
@@ -250,7 +263,7 @@ class StudioView(QWidget):
         self.combo_render_mode.setCurrentIndex(0)
         self.combo_render_mode.currentIndexChanged.connect(self._sync_cards_from_combos)
         self.combo_render_mode.setVisible(False)
-        extras_layout.addWidget(self.combo_render_mode)
+        extras_v.addWidget(self.combo_render_mode)
 
         self.extras_widget.setVisible(False)
         s1_layout.addWidget(self.extras_widget)
@@ -293,21 +306,19 @@ class StudioView(QWidget):
         self.txt_script.textChanged.connect(self._on_duration_or_script_changed)
         s2_layout.addWidget(self.txt_script)
 
-        # Quick Polish Tools
+        # Quick Polish Tools (3 compact chips + More menu)
         polish_row = QHBoxLayout()
         polish_row.setSpacing(6)
-        lbl_pol = QLabel("Quick Polish:")
+        lbl_pol = QLabel("Polish:")
         lbl_pol.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; font-weight: 500; background: transparent;")
         polish_row.addWidget(lbl_pol)
 
-        quick_prompts = [
-            ("Enhance Hook", "Make the opening hook more exciting and curiosity-inducing."),
-            ("Simplify Language", "Explain the mechanism in simpler, everyday conversational language."),
-            ("Extend to 65s", "Expand the explanation with fascinating scientific details so the script reaches 61-70s to qualify for TikTok Creator Rewards monetization."),
-            ("Tighten Pacing", "Shorten and tighten the pacing so it is punchier."),
-            ("Clean Standalone", "Stop referring to the video name and rewrite cleanly as a standalone script."),
+        primary_prompts = [
+            ("✦ Hook", "Make the opening hook more exciting, punchy, and curiosity-inducing."),
+            ("✦ Expand (65s)", "Expand the explanation with fascinating scientific details so the script reaches 165-175 words for 61-70s TikTok monetization."),
+            ("✦ Simplify", "Explain the mechanism in simpler, everyday conversational language for general audiences."),
         ]
-        for btn_label, instruction in quick_prompts:
+        for btn_label, instruction in primary_prompts:
             q_btn = QPushButton(btn_label)
             q_btn.setProperty("class", "chip")
             q_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -315,6 +326,16 @@ class StudioView(QWidget):
             polish_row.addWidget(q_btn)
 
         polish_row.addStretch()
+
+        btn_more_polish = QPushButton("More ▾")
+        btn_more_polish.setProperty("class", "chip")
+        btn_more_polish.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        more_menu = QMenu(self)
+        more_menu.addAction("Tighten Pacing", lambda: self.revise_script_requested.emit("Shorten and tighten the pacing so it is punchier."))
+        more_menu.addAction("Clean Standalone Script", lambda: self.revise_script_requested.emit("Stop referring to the video name and rewrite cleanly as a standalone script."))
+        more_menu.addAction("Emphasize Microscopic Scale", lambda: self.revise_script_requested.emit("Add fascinating detail about what happens at the microscopic atomic level."))
+        btn_more_polish.setMenu(more_menu)
+        polish_row.addWidget(btn_more_polish)
         s2_layout.addLayout(polish_row)
 
         rev_bar = QHBoxLayout()
@@ -386,8 +407,15 @@ class StudioView(QWidget):
         splitter.setStretchFactor(1, 5)
         scroll_layout.addWidget(splitter)
 
-        main_scroll.setWidget(scroll_content)
-        outer.addWidget(main_scroll, stretch=1)
+        self.main_scroll.setWidget(self.scroll_content)
+        outer.addWidget(self.main_scroll, stretch=1)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "main_scroll") and hasattr(self, "scroll_content"):
+            vp_w = self.main_scroll.viewport().width()
+            if vp_w > 50:
+                self.scroll_content.setMaximumWidth(vp_w)
 
     # =========================================================================
     # INTERACTIVE HELPERS
@@ -501,27 +529,27 @@ class StudioView(QWidget):
     def _on_duration_or_script_changed(self):
         words = [w for w in self.txt_script.toPlainText().split() if w.strip()]
         w_count = len(words)
-        est_sec = int(round(w_count / 2.35))
+        est_sec = int(round(w_count / 2.6))
         m, s = divmod(est_sec, 60)
         timecode = f"{m:02d}:{s:02d}.00"
-        if est_sec >= 61 and est_sec <= 75:
-            self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Monetized (61–70s)")
+        if 61 <= est_sec <= 75:
+            self.lbl_word_stats.setText(f"{timecode}  •  {w_count}w  •  Monetized")
             self.lbl_word_stats.setStyleSheet(
                 "background-color: rgba(48,209,88,0.15); color: #30D158; border: 1px solid rgba(48,209,88,0.30); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )
         elif est_sec < 61 and w_count > 0:
-            shortfall = max(1, 145 - w_count)
-            self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Under 61s (+{shortfall}w needed)")
+            shortfall = max(1, 165 - w_count)
+            self.lbl_word_stats.setText(f"{timecode}  •  {w_count}w  •  Under 61s (+{shortfall}w)")
             self.lbl_word_stats.setStyleSheet(
                 "background-color: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.30); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )
         elif est_sec > 75:
-            self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Longer than 75s")
+            self.lbl_word_stats.setText(f"{timecode}  •  {w_count}w  •  Over 75s")
             self.lbl_word_stats.setStyleSheet(
                 "background-color: rgba(255,255,255,0.06); color: #d1d5db; border: 1px solid rgba(255,255,255,0.10); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )
         else:
-            self.lbl_word_stats.setText("00:00.00  •  0 words  •  Target: 61–70s")
+            self.lbl_word_stats.setText("00:00.00  •  0w  •  Target: 61–70s")
             self.lbl_word_stats.setStyleSheet(
                 "background-color: rgba(255,255,255,0.06); color: #d1d5db; border: 1px solid rgba(255,255,255,0.10); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )

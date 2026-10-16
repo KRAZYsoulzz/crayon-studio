@@ -63,6 +63,23 @@ def save_app_config(cfg: dict):
         json.dump(cfg, f, indent=2)
 
 
+class ResponsiveStackedWidget(QStackedWidget):
+    """QStackedWidget that returns the size hint of the currently active widget,
+    ensuring inactive views with wide tables never artificially limit the active studio workspace.
+    """
+    def minimumSizeHint(self):
+        cur = self.currentWidget()
+        if cur:
+            return cur.minimumSizeHint()
+        return super().minimumSizeHint()
+
+    def sizeHint(self):
+        cur = self.currentWidget()
+        if cur:
+            return cur.sizeHint()
+        return super().sizeHint()
+
+
 class CrayonStudioWindow(QMainWindow):
     """
     Apple-Caliber Guided AI Short-Form Video Studio powered by Gemini Interactions API
@@ -107,7 +124,7 @@ class CrayonStudioWindow(QMainWindow):
 
         self.setWindowTitle("CrayonStudio — Guided Short-Form Video Studio")
         self.resize(1440, 880)
-        self.setMinimumSize(1100, 700)
+        self.setMinimumSize(780, 500)
         # Frameless window with custom integrated macOS titlebar & traffic lights
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setStyleSheet(STUDIO_DARK_QSS)
@@ -221,7 +238,7 @@ class CrayonStudioWindow(QMainWindow):
 
         main_content_v.addWidget(top_bar)
 
-        self.workspace_stack = QStackedWidget()
+        self.workspace_stack = ResponsiveStackedWidget()
         self.studio_view = StudioView()
         self.research_view = ResearchView()
         self.calendar_view = CalendarView()
@@ -241,8 +258,8 @@ class CrayonStudioWindow(QMainWindow):
         # 3. Persistent Right 9:16 Phone Preview & Publish Dock (placed underneath top_bar)
         self.player_dock = PlayerInspectorDock()
         self.main_splitter.addWidget(self.player_dock)
-        self.main_splitter.setStretchFactor(0, 1)
-        self.main_splitter.setStretchFactor(1, 0)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 2)
 
         main_content_v.addWidget(self.main_splitter, stretch=1)
         content_h.addWidget(main_content_widget, stretch=1)
@@ -422,6 +439,7 @@ class CrayonStudioWindow(QMainWindow):
             visual_style=visual_engine,
             duration=float(target_dur),
         )
+        self.player_dock.update_project_timing(self.player_dock.live_canvas.duration)
         self.lbl_active_project.setText(f"Current Video: {raw_title or 'Untitled Video'}")
         return self.current_project
 
@@ -503,6 +521,7 @@ class CrayonStudioWindow(QMainWindow):
                 visual_style=style,
                 duration=float(self.current_project.get("duration_target") or 45),
             )
+            self.player_dock.update_project_timing(self.player_dock.live_canvas.duration)
 
             slug = self.current_project.get("project_slug", "")
             video_candidate = os.path.join(p_dir, f"{slug}_final.mp4")

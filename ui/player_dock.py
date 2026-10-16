@@ -228,8 +228,8 @@ class PlayerInspectorDock(GlassCard):
 
     def __init__(self, parent=None):
         super().__init__(radius=18, elevated=True, parent=parent)
-        self.setMinimumWidth(260)
-        self.setMaximumWidth(420)
+        self.setMinimumWidth(220)
+        self.setMaximumWidth(600)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.current_video_path: str = ""
         self._build_ui()
@@ -294,11 +294,11 @@ class PlayerInspectorDock(GlassCard):
         transport.addWidget(self.btn_play)
 
         self.slider_seek = QSlider(Qt.Orientation.Horizontal)
-        self.slider_seek.setRange(0, 45000)
+        self.slider_seek.setRange(0, 65000)
         self.slider_seek.sliderMoved.connect(self._on_slider_moved)
         transport.addWidget(self.slider_seek, stretch=1)
 
-        self.lbl_time = QLabel("00:00.00 / 00:45.00")
+        self.lbl_time = QLabel("00:00.00 / 01:05.00")
         self.lbl_time.setProperty("class", "mono")
         self.lbl_time.setStyleSheet("color: #c7c7cc; font-size: 11px; background: transparent;")
         transport.addWidget(self.lbl_time)
@@ -522,9 +522,27 @@ class PlayerInspectorDock(GlassCard):
         dur_cs = int((dur_sec - int(dur_sec)) * 100)
         self.lbl_time.setText(f"{cur_m:02d}:{cur_s:02d}.{cur_cs:02d} / {dur_m:02d}:{dur_s:02d}.{dur_cs:02d}")
 
+    def update_project_timing(self, duration_sec: float):
+        dur = max(1.0, float(duration_sec))
+        dur_ms = int(dur * 1000)
+        self.slider_seek.setRange(0, dur_ms)
+        m, s = divmod(int(dur), 60)
+        cs = int((dur - int(dur)) * 100)
+        cur_pos = self.slider_seek.value() / 1000.0
+        cm, cs_s = divmod(int(cur_pos), 60)
+        ccs = int((cur_pos - int(cur_pos)) * 100)
+        self.lbl_time.setText(f"{cm:02d}:{cs_s:02d}.{ccs:02d} / {m:02d}:{s:02d}.{cs:02d}")
+
     def _on_duration_changed(self, dur_ms: int):
         if dur_ms > 0:
             self.slider_seek.setRange(0, dur_ms)
+            dur_sec = dur_ms / 1000.0
+            m, s = divmod(int(dur_sec), 60)
+            cs = int((dur_sec - int(dur_sec)) * 100)
+            cur_pos = self.slider_seek.value() / 1000.0
+            cm, cs_s = divmod(int(cur_pos), 60)
+            ccs = int((cur_pos - int(cur_pos)) * 100)
+            self.lbl_time.setText(f"{cm:02d}:{cs_s:02d}.{ccs:02d} / {m:02d}:{s:02d}.{cs:02d}")
 
     def _on_slider_moved(self, pos_ms: int):
         self.live_canvas.set_time(pos_ms / 1000.0)

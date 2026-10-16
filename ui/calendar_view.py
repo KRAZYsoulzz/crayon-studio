@@ -21,6 +21,10 @@ class CalendarView(QWidget):
         self.projects: list[dict] = []
         self._build_ui()
 
+    def minimumSizeHint(self):
+        from PySide6.QtCore import QSize
+        return QSize(320, 200)
+
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
