@@ -20,7 +20,7 @@ class LiveStoryboardCanvas(QWidget):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(245, 435)
+        self.setMinimumSize(200, 355)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.words: list[dict] = []
         self.scenes: list[dict] = []
@@ -228,8 +228,9 @@ class PlayerInspectorDock(GlassCard):
 
     def __init__(self, parent=None):
         super().__init__(radius=18, elevated=True, parent=parent)
-        self.setMinimumWidth(360)
-        self.setMaximumWidth(425)
+        self.setMinimumWidth(280)
+        self.setMaximumWidth(390)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.current_video_path: str = ""
         self._build_ui()
 

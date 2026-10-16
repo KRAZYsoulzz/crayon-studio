@@ -106,7 +106,8 @@ class CrayonStudioWindow(QMainWindow):
         self._autosave_timer.timeout.connect(self._on_debounced_save)
 
         self.setWindowTitle("CrayonStudio — Guided Short-Form Video Studio")
-        self.resize(1540, 920)
+        self.resize(1440, 880)
+        self.setMinimumSize(1100, 700)
         self.setStyleSheet(STUDIO_DARK_QSS)
 
         self._build_layout()
@@ -220,7 +221,7 @@ class CrayonStudioWindow(QMainWindow):
 
         # 3. Persistent Right 9:16 Phone Preview & Publish Dock
         self.player_dock = PlayerInspectorDock()
-        main_h.addWidget(self.player_dock)
+        main_h.addWidget(self.player_dock, 0)
 
         self._connect_signals()
         self.switch_nav(0)
