@@ -204,7 +204,11 @@ class AIStoryboardEngine:
                     progress_callback("[Director] Extracting visual style DNA with Gemini 3.8 Flash...")
                 from google import genai
 
-                client = genai.Client(api_key=self.gemini_api_key)
+                from google.genai import types
+                client = genai.Client(
+                    api_key=self.gemini_api_key,
+                    http_options=types.HttpOptions(timeout=20_000, retry_options=types.HttpRetryOptions(attempts=1)),
+                )
                 img_part = self._encode_image_part(style_image_path)
                 if img_part:
                     prompt = (
@@ -212,11 +216,16 @@ class AIStoryboardEngine:
                         "In 2 concise sentences, describe its lighting, material/shading style, and color palette. "
                         "End with: 'vertical 9:16 aspect ratio, strictly no text, no words, no letters, no watermark.'"
                     )
-                    interaction = client.interactions.create(
-                        model="gemini-3.8-flash",
-                        input=[img_part, {"type": "text", "text": prompt}],
-                        store=False,
-                    )
+                    for m_name in ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash"):
+                        try:
+                            interaction = client.interactions.create(
+                                model=m_name,
+                                input=[img_part, {"type": "text", "text": prompt}],
+                                store=False,
+                            )
+                            break
+                        except Exception:
+                            continue
                     out_txt = getattr(interaction, "output_text", "")
                     if out_txt:
                         dna = out_txt.strip().replace("\n", " ")
@@ -381,7 +390,11 @@ class AIStoryboardEngine:
             try:
                 from google import genai
 
-                client = genai.Client(api_key=self.gemini_api_key)
+                from google.genai import types
+                client = genai.Client(
+                    api_key=self.gemini_api_key,
+                    http_options=types.HttpOptions(timeout=25_000, retry_options=types.HttpRetryOptions(attempts=1)),
+                )
                 excerpts = [sc.get("script_excerpt", "") for sc in scenes]
                 rev_directive = (
                     f"\nUSER VISUAL REVISION INSTRUCTION TO APPLY ACROSS SCENES: '{rev_clean}'\n"
@@ -411,16 +424,22 @@ class AIStoryboardEngine:
                 )
                 from core.usage_tracker import usage_tracker
 
-                interaction = client.interactions.create(
-                    model="gemini-3.8-flash",
-                    input=prompt_ai,
-                    store=False,
-                    response_format={
-                        "type": "text",
-                        "mime_type": "application/json",
-                        "schema": schema,
-                    },
-                )
+                interaction = None
+                for m_name in ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash"):
+                    try:
+                        interaction = client.interactions.create(
+                            model=m_name,
+                            input=prompt_ai,
+                            store=False,
+                            response_format={
+                                "type": "text",
+                                "mime_type": "application/json",
+                                "schema": schema,
+                            },
+                        )
+                        break
+                    except Exception:
+                        continue
                 out_txt = getattr(interaction, "output_text", "")
                 if out_txt:
                     usage_tracker.record_interaction(
@@ -614,7 +633,11 @@ class AIStoryboardEngine:
             try:
                 from google import genai
 
-                client = genai.Client(api_key=self.gemini_api_key)
+                from google.genai import types
+                client = genai.Client(
+                    api_key=self.gemini_api_key,
+                    http_options=types.HttpOptions(timeout=30_000, retry_options=types.HttpRetryOptions(attempts=1)),
+                )
                 clean_prompt = prompt[:950]
 
                 # Build multimodal input (attach style reference image if configured)
