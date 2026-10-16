@@ -67,7 +67,18 @@ class StudioView(QWidget):
         self.step_bar.next_action_triggered.connect(self._on_next_step_cta)
         outer.addWidget(self.step_bar)
 
-        # Main Scrollable / Splitter Area
+        # Main Scrollable Area so the window never expands or locks sizing
+        main_scroll = QScrollArea()
+        main_scroll.setWidgetResizable(True)
+        main_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        main_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 4, 0)
+        scroll_layout.setSpacing(10)
+
+        # Splitter Area inside the scrollable container
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
 
@@ -381,7 +392,10 @@ class StudioView(QWidget):
 
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 3)
-        outer.addWidget(splitter, stretch=1)
+        scroll_layout.addWidget(splitter)
+
+        main_scroll.setWidget(scroll_content)
+        outer.addWidget(main_scroll, stretch=1)
 
     # =========================================================================
     # INTERACTIVE STEPPER & CARD HELPERS
