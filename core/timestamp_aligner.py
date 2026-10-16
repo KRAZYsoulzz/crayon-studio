@@ -30,7 +30,7 @@ def _load_audio_as_16k_float32(audio_path: str) -> np.ndarray:
     """Decodes audio to 16kHz mono float32 array via FFmpeg pipe to avoid PyAV metadata_errors bugs."""
     try:
         ffmpeg_bin = FFmpegCompositor.find_ffmpeg_executable()
-        cmd = [ffmpeg_bin, "-i", audio_path, "-f", "f32le", "-ac", "1", "-ar", "16000", "-"]
+        cmd = [ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-i", audio_path, "-f", "f32le", "-ac", "1", "-ar", "16000", "-"]
         res = subprocess.run(cmd, capture_output=True, check=True)
         arr = np.frombuffer(res.stdout, dtype=np.float32)
         if len(arr) > 0:

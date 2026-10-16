@@ -5,21 +5,26 @@ Features:
 - Niche Keyword Search (via yt-dlp & YouTube API)
 - Competitor Channel Scanner (pulls uploads from @creator channels)
 - 4-Way Audience Friction & Sentiment Mining:
-    * ❓ Confusion Points (Curiosity Triggers)
-    * ⚠️ Complaints & Flaws (What Competitors Skipped/Missed)
-    * 🌟 Praises & Wins (What Viewers Found Satisfying)
-    * 💡 Content Gaps (Part 2 Requests & Deep Dives)
-- AI Content Suggestion Matrix (Engine-aware video concepts with pre-engineered hooks)
+    * Confusion Points (Curiosity Triggers)
+    * Complaints & Flaws (What Competitors Skipped/Missed)
+    * Praises & Wins (What Viewers Found Satisfying)
+    * Content Gaps (Part 2 Requests & Deep Dives)
+- Dynamic AI Content Suggestion Matrix powered by Gemini (`gemini-3.5-flash-lite` / `gemini-3.8-flash`)
+  using the Interactions API with structured JSON output grounded strictly in the scraped data.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("crayon_studio.scraper")
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 try:
     import yt_dlp
@@ -28,7 +33,24 @@ except ImportError:
     HAS_YTDLP = False
 
 
-def _clean_comment_text(text: str, max_words: int = 18) -> str:
+def _resolve_gemini_api_key(api_key: Optional[str] = None) -> str:
+    """Resolve Gemini API key from argument, environment, or config.json."""
+    if api_key and api_key.strip():
+        return api_key.strip()
+    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                return str(cfg.get("gemini_api_key", "")).strip()
+        except Exception:
+            pass
+    return ""
+
+
+def _clean_comment_text(text: str, max_words: int = 20) -> str:
     """Sanitize comment strings, removing URLs and noise while strictly respecting word boundaries."""
     if not text:
         return ""
@@ -41,20 +63,35 @@ def _clean_comment_text(text: str, max_words: int = 18) -> str:
     return cleaned
 
 
-def _clean_title_snippet(text: str, max_words: int = 7) -> str:
+def _clean_title_snippet(text: str, max_words: int = 8) -> str:
     """Sanitizes raw video or topic title, stripping noise and preserving full words."""
     if not text:
         return ""
     cleaned = re.sub(r"\([^)]*\)", "", text)
     cleaned = re.sub(r"\[[^\]]*\]", "", cleaned)
     cleaned = re.sub(r"\|.*$", "", cleaned)
-    cleaned = re.sub(r":.*$", "", cleaned)
     cleaned = re.sub(r"[#@][\w]+", "", cleaned)
     cleaned = " ".join(cleaned.split()).strip(".,;:!- ")
     words = cleaned.split()
     if len(words) > max_words:
         words = words[:max_words]
     return " ".join(words).strip(".,;:!- ")
+
+
+def _deduce_category_and_engine(text: str) -> tuple[str, str]:
+    """Deduce category and recommended visual style preset from topic/comment text."""
+    t_lower = text.lower()
+    if any(w in t_lower for w in ["factory", "manufactur", "assembly", "how it's made", "how it is made", "production", "forged"]):
+        return "How It's Made", "3D_Teardown"
+    if any(w in t_lower for w in ["engine", "motor", "gear", "valve", "piezo", "lighter", "turbine", "hydraulic", "circuit", "sensor", "battery", "hardware", "mechanical"]):
+        return "Engineering", "3D_Teardown"
+    if any(w in t_lower for w in ["concrete", "bridge", "dam", "building", "tower", "roman", "pantheon", "skyscraper", "structural", "arch"]):
+        return "Architecture", "3D_Pixar"
+    if any(w in t_lower for w in ["vault", "heist", "safe", "lock", "prison", "escape", "thief", "laser", "security", "bunker"]):
+        return "Escape/Heist", "3D_Pixar"
+    if any(w in t_lower for w in ["brain", "psychology", "illusion", "casino", "mind", "habit", "memory", "dopamine", "bias", "subconscious"]):
+        return "Psychology", "2D_Kurzgesagt"
+    return "STEM", "3D_Pixar"
 
 
 def _categorize_comments(comments: List[str]) -> Dict[str, List[str]]:
@@ -91,22 +128,18 @@ def _categorize_comments(comments: List[str]) -> Dict[str, List[str]]:
             continue
         c_lower = c.lower()
 
-        # 1. Confusion (questions and curiosity)
         if "?" in c or any(w in c_lower for w in ["why", "how", "wait", "what if", "explain", "confused", "doesn't make sense", "does it"]):
             if len(confusion) < 4:
                 confusion.append(c)
 
-        # 2. Complaints & Flaws
         if any(w in c_lower for w in complaint_keywords):
             if len(complaints) < 4:
                 complaints.append(c)
 
-        # 3. Praises & Retention Triggers
         if any(w in c_lower for w in praise_keywords):
             if len(praises) < 4:
                 praises.append(c)
 
-        # 4. Content Gaps & Requests
         if any(w in c_lower for w in gap_keywords):
             if len(gaps) < 4:
                 gaps.append(c)
@@ -120,101 +153,65 @@ def _categorize_comments(comments: List[str]) -> Dict[str, List[str]]:
 
 
 def _get_curated_niche_trends(query: str, count: int = 5) -> List[Dict[str, Any]]:
-    """Curated, high-fidelity competitor intelligence pool for offline resilience."""
-    knowledge_base = [
-        {
-            "topic": f"Piezoelectric Spark Generator Breakdown ({query.title()})",
-            "source_url": "https://www.youtube.com/watch?v=mock_piezo_01",
-            "views": 1420000,
-            "category": "Engineering",
-            "raw_comments": [
-                "You skipped the internal spring that re-cocks the hammer!",
-                "Your actually missing a piece, it's a small steel rod inside.",
-                "Why does a quartz crystal make electricity without any battery?",
-                "How does the crystal not crack into dust under that impact?",
-                "The cutaway diagram at 0:25 was the most satisfying visual ever.",
-                "Finally understood why click lighters hurt so much when shocked.",
-                "Part 2 showing a barbecue grill igniter please!",
-                "Can you show what happens if the quartz gets wet?",
-            ],
-        },
-        {
-            "topic": f"Ancient Architecture: Roman Concrete That Heals Itself ({query.title()})",
-            "source_url": "https://www.youtube.com/watch?v=mock_arch_02",
-            "views": 2100000,
-            "category": "Architecture",
-            "raw_comments": [
-                "You skipped the volcanic pozzolana clasts in the aggregate!",
-                "Audio was way too fast during the chemical formula part.",
-                "Why did modern cement forget how to self-heal?",
-                "How does saltwater actually make the concrete stronger?",
-                "The animated blueprint showing crystal growth made it instantly clear.",
-                "Brilliant explanation of lime clasts.",
-                "Part 2 comparing the Pantheon to the Hoover Dam.",
-                "Why aren't all ocean sea walls built with Roman concrete today?",
-            ],
-        },
-        {
-            "topic": f"How Brushless Motors Spin at 40,000 RPM Without Touching ({query.title()})",
-            "source_url": "https://www.youtube.com/watch?v=mock_motor_03",
-            "views": 980000,
-            "category": "How It's Made",
-            "raw_comments": [
-                "You didn't show the ESC microcontroller circuit that switches phases!",
-                "Pacing was too fast, felt like half the video was missing.",
-                "Why don't the magnets fly off from centrifugal force?",
-                "How do they balance the rotor at 40k RPM without vibrating?",
-                "Love the exploded CAD animation showing the stator windings.",
-                "Most satisfying motor breakdown on YouTube.",
-                "Part 2 explaining drone motors vs electric car motors please!",
-                "What happens when the ceramic bearings overheat?",
-            ],
-        },
-        {
-            "topic": f"The Physics of Non-Newtonian Fluids Made Simple ({query.title()})",
-            "source_url": "https://www.youtube.com/watch?v=mock_fluid_04",
-            "views": 850000,
-            "category": "STEM",
-            "raw_comments": [
-                "You completely skipped shear-thinning ketchup vs shear-thickening oobleck.",
-                "Why does cornstarch lock into solid armor when punched?",
-                "How does the liquid return to water instantly once pressure stops?",
-                "The continuous paper sketch of molecular clusters made it click.",
-                "Mind blown, best science video this month.",
-                "Part 2 testing body armor with real projectiles!",
-                "Can you try running across a swimming pool of it?",
-            ],
-        },
-        {
-            "topic": f"How Secret Bank Vaults Are Designed to Trap Thieves ({query.title()})",
-            "source_url": "https://www.youtube.com/watch?v=mock_vault_05",
-            "views": 1650000,
-            "category": "Escape/Heist",
-            "raw_comments": [
-                "You skipped how thermal lances cut through rebar concrete.",
-                "Didn't show the relocking pins triggered by drilling vibrations.",
-                "Why do time locks have no mechanical override key at all?",
-                "How does the pressure door seal without any electrical power?",
-                "The blueprint sketch showing the seismic trigger was pure genius.",
-                "Incredible breakdown of sensor physics.",
-                "Part 2 on the Antwerp diamond heist bypass please!",
-                "What happens if thieves pump inert nitrogen into the vault?",
-            ],
-        },
+    """Topic-adaptive competitor intelligence fallback when offline or yt-dlp is blocked."""
+    clean_q = _clean_title_snippet(query, max_words=6) or "Mechanical Engineering"
+    cat, _ = _deduce_category_and_engine(clean_q)
+    subj = clean_q.title()
+
+    angles = [
+        (
+            f"How {subj} Actually Works Inside (Cutaway Breakdown)",
+            1420000,
+            f"Why doesn't the core of {subj} fail under continuous high stress?",
+            f"Skipped the internal transfer mechanism inside {subj}",
+            "The 3D cutaway animation made the hidden physics click immediately",
+            f"Part 2 showing {subj} pushed past its failure limit!",
+        ),
+        (
+            f"The Counterintuitive Physics of {subj} Explained",
+            980000,
+            f"How does {subj} maintain stability without overheating or locking up?",
+            "Pacing was too rushed during the critical internal stage",
+            "Finally understood the exact energy path thanks to the cross-section",
+            f"Compare {subj} to modern aerospace alternatives next!",
+        ),
+        (
+            f"What Happens When {subj} Fails at Maximum Load",
+            1750000,
+            f"Wait, what triggers the initial micro-fracture inside {subj}?",
+            "Didn't show the safety release valve or secondary damping layer",
+            "Best visual diagram of internal stress vectors on YouTube",
+            f"Can you test {subj} under extreme temperature extremes?",
+        ),
+        (
+            f"Why Engineers Redesigned {subj} From Scratch",
+            640000,
+            f"Why did the original design of {subj} wear out so quickly?",
+            "Left out the material composition difference between old and new",
+            "Super clear comparison between legacy and modern geometry",
+            f"Deep dive on how {subj} is manufactured on the assembly line",
+        ),
+        (
+            f"Inside the Microscopic Geometry of {subj}",
+            1120000,
+            f"How do those tiny tolerances in {subj} prevent energy loss?",
+            "Skipped how the seals hold pressure at high velocity",
+            "Satisfying exploded view of every moving component",
+            f"Show what happens inside {subj} in slow motion!",
+        ),
     ]
 
     results = []
-    for item in knowledge_base[:count]:
-        cat = _categorize_comments(item["raw_comments"])
+    for idx, (title, views, conf, comp, praise, gap) in enumerate(angles[:count]):
         results.append({
-            "topic": item["topic"],
-            "source_url": item["source_url"],
-            "views": item["views"],
-            "category": item.get("category", "STEM"),
-            "confusion_points": " | ".join(cat["confusion_points"][:3]) or "Why does this reaction occur?",
-            "complaints": " | ".join(cat["complaints"][:3]) or "Skipped key internal component explanation",
-            "praises": " | ".join(cat["praises"][:3]) or "Satisfying visual explanation; clear diagram",
-            "content_gaps": " | ".join(cat["content_gaps"][:3]) or "Viewer requested Part 2 deep-dive",
+            "topic": title,
+            "source_url": f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}",
+            "views": views,
+            "category": cat,
+            "confusion_points": conf,
+            "complaints": comp,
+            "praises": praise,
+            "content_gaps": gap,
         })
     return results
 
@@ -246,7 +243,7 @@ def extract_comments_for_video(video_url: str, max_comments: int = 20) -> List[s
                     extracted.append(txt)
             return extracted
     except Exception as e:
-        logger.warning(f"Could not extract comments for {video_url}: {e}")
+        logger.warning("Could not extract comments for %s: %s", video_url, e)
         return []
 
 
@@ -255,21 +252,7 @@ def search_trends_and_comments(
     max_results: int = 5,
     api_key: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Search YouTube competitor videos and extract audience friction & sentiment.
-
-    Returns:
-        List of dicts: [
-            {
-                "topic": str,
-                "source_url": str,
-                "views": int,
-                "confusion_points": str,
-                "complaints": str,
-                "praises": str,
-                "content_gaps": str,
-            }, ...
-        ]
-    """
+    """Search YouTube competitor videos and extract audience friction & sentiment."""
     clean_query = query.strip() or "engineering breakdown"
     logger.info("Executing trend research for query: '%s'", clean_query)
 
@@ -295,28 +278,28 @@ def search_trends_and_comments(
                     url = entry.get("url") or entry.get("webpage_url") or f"https://www.youtube.com/watch?v={v_id}"
                     views = entry.get("view_count") or 350000
 
-                    # Fetch real comments for top videos
                     raw_comments = extract_comments_for_video(url, max_comments=15)
+                    subj = _clean_title_snippet(title, max_words=5) or clean_query
 
                     if not raw_comments:
-                        # Fallback realistic audience reaction based on title
-                        subject = title.split()[-1] if title.split() else "this"
                         raw_comments = [
-                            f"Why does {subject} actually behave like that?",
-                            f"You skipped the internal mechanism that makes {subject} work!",
-                            "The visual diagram made it so satisfying to watch.",
-                            "Need part 2 explaining what happens under high pressure!",
+                            f"Why does {subj} behave like that under load?",
+                            f"You skipped the internal mechanism that makes {subj} work!",
+                            f"The visual cutaway of {subj} made it so satisfying to watch.",
+                            f"Need part 2 explaining how {subj} handles extreme limits!",
                         ]
 
                     cat = _categorize_comments(raw_comments)
+                    deduced_cat, _ = _deduce_category_and_engine(title + " " + clean_query)
                     extracted_trends.append({
                         "topic": title,
                         "source_url": url,
                         "views": int(views),
-                        "confusion_points": " | ".join(cat["confusion_points"][:3]) or "Why does this occur under load?",
-                        "complaints": " | ".join(cat["complaints"][:3]) or "Competitor video rushed the core explanation",
+                        "category": deduced_cat,
+                        "confusion_points": " | ".join(cat["confusion_points"][:3]) or f"How does {subj} actually work inside?",
+                        "complaints": " | ".join(cat["complaints"][:3]) or f"Skipped key internal step of {subj}",
                         "praises": " | ".join(cat["praises"][:3]) or "Viewers praised high-clarity internal visual diagrams",
-                        "content_gaps": " | ".join(cat["content_gaps"][:3]) or "Audience requested Part 2 deep-dive",
+                        "content_gaps": " | ".join(cat["content_gaps"][:3]) or f"Audience requested deep-dive on {subj}",
                     })
 
                 if extracted_trends:
@@ -324,7 +307,7 @@ def search_trends_and_comments(
                     return extracted_trends
 
         except Exception as e:
-            logger.warning(f"yt-dlp search encountered an issue ({e}). Using intelligence pool.")
+            logger.warning("yt-dlp search encountered an issue (%s). Using topic-adaptive intelligence pool.", e)
 
     return _get_curated_niche_trends(clean_query, count=max_results)
 
@@ -333,21 +316,9 @@ def scan_competitor_channel(
     channel_input: str,
     max_videos: int = 5,
 ) -> List[Dict[str, Any]]:
-    """Scans a competitor channel's recent uploads and extracts audience sentiment & friction points.
+    """Scans a competitor channel's recent uploads and extracts audience sentiment & friction points."""
+    clean = channel_input.strip() or "@TheActionLab"
 
-    Args:
-        channel_input: Channel handle ('@TheActionLab'), URL ('https://youtube.com/@TheActionLab'),
-                       or creator name.
-        max_videos: Number of recent uploads to analyze.
-
-    Returns:
-        List of analyzed competitor video dicts.
-    """
-    clean = channel_input.strip()
-    if not clean:
-        clean = "@TheActionLab"
-
-    # Normalize channel URL
     if clean.startswith("http"):
         target_url = clean
         if not any(sub in clean for sub in ["/videos", "/shorts", "/streams"]):
@@ -379,24 +350,26 @@ def scan_competitor_channel(
                     v_id = entry.get("id", "")
                     url = entry.get("url") or entry.get("webpage_url") or f"https://www.youtube.com/watch?v={v_id}"
                     views = entry.get("view_count") or 520000
+                    subj = _clean_title_snippet(title, max_words=5) or "this mechanism"
 
-                    # Extract comments from this upload
                     comments = extract_comments_for_video(url, max_comments=15)
                     if not comments:
                         comments = [
-                            f"Why did you skip the internal part of {title[:20]}?",
+                            f"Why did you skip the internal part of {subj}?",
                             "The animation at the start was super satisfying.",
-                            "Can you explain why this doesn't break in winter?",
+                            f"How does {subj} not break under extreme pressure?",
                             "Part 2 please!",
                         ]
 
                     cat = _categorize_comments(comments)
+                    deduced_cat, _ = _deduce_category_and_engine(title)
                     channel_trends.append({
                         "topic": title,
                         "source_url": url,
                         "views": int(views),
-                        "confusion_points": " | ".join(cat["confusion_points"][:3]) or "Why does this happen?",
-                        "complaints": " | ".join(cat["complaints"][:3]) or "Skipped key internal mechanism",
+                        "category": deduced_cat,
+                        "confusion_points": " | ".join(cat["confusion_points"][:3]) or f"How does {subj} work internally?",
+                        "complaints": " | ".join(cat["complaints"][:3]) or f"Skipped internal mechanism of {subj}",
                         "praises": " | ".join(cat["praises"][:3]) or "Loved the clear visual breakdown",
                         "content_gaps": " | ".join(cat["content_gaps"][:3]) or "Viewer requested follow-up test",
                     })
@@ -406,81 +379,148 @@ def scan_competitor_channel(
                     return channel_trends
 
         except Exception as e:
-            logger.warning(f"Channel scanning failed for {clean} ({e}). Falling back to niche intelligence.")
+            logger.warning("Channel scanning failed for %s (%s). Falling back to niche intelligence.", clean, e)
 
-    # Fallback to curated trends
     return _get_curated_niche_trends(clean.lstrip("@"), count=max_videos)
 
 
 def generate_content_suggestions(
     scraped_items: List[Dict[str, Any]],
+    api_key: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Synthesizes high-retention video suggestions based on competitor audience feedback.
+    """Synthesizes high-retention video suggestions directly from the scraped competitor items on screen.
 
-    Specifically crafts opening hooks that resolve competitor complaints and confusion,
-    and assigns the optimal visual engine (2D Crayon vs 3D Teardown).
-
-    Returns:
-        List of suggestion dicts:
-        [{
-            "title": str,
-            "hook": str,
-            "category": str,
-            "recommended_engine": str,
-            "competitive_advantage": str,
-            "confusion_focus": str,
-            "complaint_resolved": str,
-        }, ...]
+    Uses `gemini-3.5-flash-lite` (or `gemini-3.8-flash`) with structured JSON output via the
+    Interactions API so every suggestion directly reflects the scraped topics, confusion points,
+    and complaints on screen. Falls back to dynamic per-item synthesis if offline.
     """
-    suggestions: List[Dict[str, Any]] = []
+    if not scraped_items:
+        return []
 
+    resolved_key = _resolve_gemini_api_key(api_key)
+    if resolved_key:
+        try:
+            from google import genai
+
+            client = genai.Client(api_key=resolved_key)
+            compact_items = [
+                {
+                    "idx": idx,
+                    "competitor_title": item.get("topic", ""),
+                    "views": item.get("views", 0),
+                    "viewer_confusion": item.get("confusion_points", ""),
+                    "viewer_complaints": item.get("complaints", ""),
+                    "content_gaps": item.get("content_gaps", ""),
+                }
+                for idx, item in enumerate(scraped_items)
+            ]
+
+            schema = {
+                "type": "object",
+                "properties": {
+                    "suggestions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "hook": {"type": "string"},
+                                "category": {
+                                    "type": "string",
+                                    "enum": ["STEM", "How It's Made", "Engineering", "Escape/Heist", "Architecture", "Psychology"],
+                                },
+                                "recommended_engine": {
+                                    "type": "string",
+                                    "enum": ["3D_Pixar", "3D_Teardown", "2D_Kurzgesagt"],
+                                },
+                                "competitive_advantage": {"type": "string"},
+                                "confusion_focus": {"type": "string"},
+                                "complaint_resolved": {"type": "string"},
+                            },
+                            "required": [
+                                "title",
+                                "hook",
+                                "category",
+                                "recommended_engine",
+                                "competitive_advantage",
+                                "confusion_focus",
+                                "complaint_resolved",
+                            ],
+                        },
+                    }
+                },
+                "required": ["suggestions"],
+            }
+
+            prompt = (
+                "You are a viral short-form educational video strategist (Zack D. Films / Veritasium / Kurzgesagt style).\n"
+                "For EACH of the scraped competitor videos below, create 1 superior short-form video concept that directly "
+                "answers the viewers' top confusion and fixes what the competitor skipped.\n"
+                "IMPORTANT: Stay 100% faithful to each scraped video's actual subject matter—do NOT substitute unrelated topics.\n"
+                "Choose `recommended_engine` as:\n"
+                "- '3D_Teardown' for hardware, motors, mechanical devices, and manufacturing\n"
+                "- '3D_Pixar' for physical science, architecture, heists, and cutaway storytelling\n"
+                "- '2D_Kurzgesagt' for psychology, abstract concepts, and macro systems\n\n"
+                f"Scraped Competitor Data:\n{json.dumps(compact_items, ensure_ascii=False)}"
+            )
+
+            from core.usage_tracker import usage_tracker
+
+            for model_name in ("gemini-3.5-flash-lite", "gemini-3.8-flash"):
+                try:
+                    interaction = client.interactions.create(
+                        model=model_name,
+                        input=prompt,
+                        store=False,
+                        response_format={
+                            "type": "text",
+                            "mime_type": "application/json",
+                            "schema": schema,
+                        },
+                    )
+                    out_txt = getattr(interaction, "output_text", "")
+                    if out_txt:
+                        usage_tracker.record_interaction(
+                            model_name,
+                            "trend_suggestions",
+                            interaction,
+                            prompt_chars=len(prompt),
+                            output_chars=len(out_txt),
+                        )
+                        parsed = json.loads(out_txt)
+                        ai_suggs = parsed.get("suggestions", [])
+                        if isinstance(ai_suggs, list) and ai_suggs:
+                            enriched = []
+                            for idx, s in enumerate(ai_suggs):
+                                base_views = scraped_items[idx].get("views", 500000) if idx < len(scraped_items) else 500000
+                                s_copy = dict(s)
+                                s_copy["views_basis"] = base_views
+                                enriched.append(s_copy)
+                            logger.info("Generated %d dynamic content suggestions via %s.", len(enriched), model_name)
+                            return enriched
+                except Exception as model_err:
+                    usage_tracker.record_error(model_name, "trend_suggestions", model_err)
+                    logger.warning("Suggestion model %s note: %s", model_name, model_err)
+                    if "402" in str(model_err):
+                        break
+        except Exception as e:
+            logger.warning("Gemini content suggestion synthesis fallback (%s).", e)
+
+    # Dynamic topic-faithful offline synthesis (never hijacks with unrelated hardcoded topics)
+    suggestions: List[Dict[str, Any]] = []
     for item in scraped_items:
         orig_topic = item.get("topic", "Mechanical System")
         confusion = item.get("confusion_points", "").split("|")[0].strip() or "how this works under extreme load"
         complaint = item.get("complaints", "").split("|")[0].strip() or "skipped the internal mechanism"
-        praise = item.get("praises", "").split("|")[0].strip() or "satisfying visual breakdown"
 
-        # Deduce category & engine
-        combined_text = (orig_topic + " " + confusion + " " + complaint).lower()
-        clean_subj = _clean_title_snippet(orig_topic, max_words=6)
+        clean_subj = _clean_title_snippet(orig_topic, max_words=7) or "This Mechanism"
+        cat, engine = _deduce_category_and_engine(orig_topic + " " + confusion + " " + complaint)
 
-        if any(w in combined_text for w in ["spark", "lighter", "engine", "gear", "piezo", "ignition"]):
-            cat = "Engineering"
-            engine = "3D_Teardown"
-            concept_title = "The 15,000-Volt Secret Inside Push Lighters"
-            hook = "Inside every push-button lighter is a tiny power plant that generates fifteen thousand volts without a single battery."
-        elif any(w in combined_text for w in ["motor", "brushless", "rotor", "stator", "rpm", "bearing"]):
-            cat = "How It's Made"
-            engine = "3D_Teardown"
-            concept_title = "How Brushless Motors Spin at 40,000 RPM"
-            hook = "Inside a brushless electric motor spinning at forty thousand rotations per minute, nothing is actually touching."
-        elif any(w in combined_text for w in ["concrete", "roman", "cement", "seawall", "pantheon", "building"]):
-            cat = "Architecture"
-            engine = "2D_Crayon"
-            concept_title = "The 2,000-Year Ancient Roman Concrete Secret"
-            hook = "Ancient Roman concrete gets stronger the longer it sits in crashing ocean waves, while modern concrete crumbles in fifty years."
-        elif any(w in combined_text for w in ["vault", "heist", "alarm", "safe", "thief", "sensor", "escape"]):
-            cat = "Escape/Heist"
-            engine = "2D_Crayon"
-            concept_title = "The Sensor Blindspot That Cracked an Impenetrable Vault"
-            hook = "In 2003, a crew of thieves breached an impenetrable subterranean bank vault and escaped with one hundred million dollars without tripping a single alarm."
-        elif any(w in combined_text for w in ["brain", "psychology", "casino", "gambler", "illusion", "mind", "subconscious"]):
-            cat = "Psychology"
-            engine = "2D_Crayon"
-            concept_title = "The Subconscious Glitch Casino Gamblers Can't Resist"
-            hook = "There is a bizarre glitch wired into your subconscious mind that casinos exploit every single day to influence your behavior."
-        elif any(w in combined_text for w in ["vacuum", "feather", "bowling", "galileo", "gravity"]):
-            cat = "STEM"
-            engine = "2D_Crayon"
-            concept_title = "Galileo's Vacuum Chamber Paradox Explained"
-            hook = "If you drop a heavy bowling ball and a lightweight feather inside a giant vacuum chamber, they hit the floor at the exact same millisecond."
-        else:
-            cat = "STEM"
-            engine = "2D_Crayon"
-            concept_title = f"The Hidden Science of {clean_subj}" if clean_subj else "The Physical Paradox Explained"
-            hook = f"Have you ever wondered what actually happens inside {clean_subj or 'this structure'} when pushed to its physical limit?"
-
-        advantage = f"Resolves competitor gap: '{_clean_comment_text(complaint, max_words=8)}'."
+        concept_title = f"The Hidden Mechanism Inside {clean_subj}" if not clean_subj.lower().startswith(("how ", "why ", "the ")) else clean_subj
+        hook = (
+            f"Most videos skip what actually happens inside {clean_subj} at the exact moment forces peak—here is the real internal breakdown."
+        )
+        advantage = f"Directly answers '{_clean_comment_text(confusion, max_words=9)}' & fixes '{_clean_comment_text(complaint, max_words=9)}'."
 
         suggestions.append({
             "title": concept_title,
@@ -488,8 +528,8 @@ def generate_content_suggestions(
             "category": cat,
             "recommended_engine": engine,
             "competitive_advantage": advantage,
-            "confusion_focus": _clean_comment_text(confusion, max_words=10),
-            "complaint_resolved": _clean_comment_text(complaint, max_words=10),
+            "confusion_focus": _clean_comment_text(confusion, max_words=14),
+            "complaint_resolved": _clean_comment_text(complaint, max_words=14),
             "views_basis": item.get("views", 500000),
         })
 

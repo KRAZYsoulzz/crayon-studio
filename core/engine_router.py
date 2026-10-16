@@ -1,17 +1,16 @@
 """
 CRAYON STUDIO — Visual Engine Router
-Dispatches AI Storyboard & Sketch-Reveal jobs (2D Storybook & 3D Teardown)
+Dispatches AI Storyboard & Omni 1.1 Flash rendering across modern visual style presets
 with automated Visual Critic 4-Keyframe inspection.
 """
 
+from __future__ import annotations
+
 import logging
 import os
-import shutil
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from core.storyboard_engine import AIStoryboardEngine
-from core.blender_orchestrator import BlenderOrchestrator
-from core.teardown_3d_engine import Teardown3DEngine
 from core.visual_critic import generate_and_verify_snapshots
 
 logger = logging.getLogger("VisualEngineRouter")
@@ -19,43 +18,59 @@ logger = logging.getLogger("VisualEngineRouter")
 
 class VisualEngineRouter:
     """
-    Unified router that selects between:
-      - Engine A: AI Storyboard & Sketch-Reveal (Continuous Storybook)
-      - Engine B: 3D AI Hardware Teardown (Exploded View & X-Ray)
-      - Legacy: Headless Blender 3D Curves
+    Unified router for CrayonStudio AI Visual Style Presets & Render Modes:
+      - 3D_Pixar: 3D Pixar / Zack D. Films Cutaway Animation
+      - 3D_Teardown: 3D Isometric Hardware Teardown (Exploded CAD / X-Ray)
+      - 2D_Kurzgesagt: 2D Kurzgesagt / Stylized Illustrated Storybook
+      - Custom_Style: Custom Reference Image Lock (<IMAGE_REF_0>)
     """
 
-    ENGINE_2D = "2D_Crayon"
+    ENGINE_PIXAR = "3D_Pixar"
+    ENGINE_TEARDOWN = "3D_Teardown"
+    ENGINE_KURZGESAGT = "2D_Kurzgesagt"
+    ENGINE_CUSTOM = "Custom_Style"
+    # Legacy alias
+    ENGINE_2D = "3D_Pixar"
     ENGINE_3D = "3D_Teardown"
-    ENGINE_BLENDER = "Blender_Legacy"
 
     DISPLAY_NAMES = {
-        "2D_Crayon": "[2D Crayon] AI Storyboard & Sketch-Reveal (Continuous Storybook)",
-        "3D_Teardown": "[3D Teardown] AI Hardware Teardown (Exploded View & X-Ray)",
-        "Blender_Legacy": "[Blender] Legacy Blender 3D Curves",
+        "3D_Pixar": "3D Pixar / Zack D. Films Cutaway",
+        "3D_Teardown": "3D Isometric Hardware Teardown (Exploded CAD / X-Ray)",
+        "2D_Kurzgesagt": "2D Kurzgesagt / Stylized Illustrated Storybook",
+        "Custom_Style": "Custom Style Reference Lock (<IMAGE_REF_0>)",
+        "2D_Crayon": "3D Pixar / Zack D. Films Cutaway",
+    }
+
+    RENDER_MODE_NAMES = {
+        "smart_hybrid": "Smart Hybrid (Recommended — Omni Hook/Climax + Nano Banana Keyframes)",
+        "full_omni": "Full Gemini Omni 1.1 Flash Video (Multi-Turn / Timecoded)",
+        "keyframe_only": "Nano Banana 2.1 Keyframes + 30fps 2.5D Motion (Ultra-Low Cost)",
     }
 
     def __init__(
         self,
-        visual_engine: str = "2D_Crayon",
-        blender_path: Optional[str] = None,
+        visual_engine: str = "3D_Pixar",
         ffmpeg_path: Optional[str] = None,
+        blender_path: Optional[str] = None,
     ):
-        self.visual_engine = visual_engine if visual_engine in self.DISPLAY_NAMES else self.ENGINE_2D
-        self.blender_path = blender_path
+        if visual_engine == "2D_Crayon":
+            visual_engine = self.ENGINE_PIXAR
+        self.visual_engine = visual_engine if visual_engine in self.DISPLAY_NAMES else self.ENGINE_PIXAR
         self.ffmpeg_path = ffmpeg_path or "ffmpeg"
 
     @classmethod
     def get_display_name(cls, engine: str) -> str:
-        return cls.DISPLAY_NAMES.get(engine, cls.DISPLAY_NAMES[cls.ENGINE_2D])
+        return cls.DISPLAY_NAMES.get(engine, cls.DISPLAY_NAMES[cls.ENGINE_PIXAR])
 
     @classmethod
     def recommend_engine_for_category(cls, category: str) -> str:
-        """Suggests the optimal engine based on content category."""
+        """Suggests the optimal visual style preset based on content category."""
         cat_lower = category.lower().strip()
         if any(keyword in cat_lower for keyword in ["how it", "engineering", "hardware", "machine", "device", "gadget"]):
-            return cls.ENGINE_3D
-        return cls.ENGINE_2D
+            return cls.ENGINE_TEARDOWN
+        if "psych" in cat_lower:
+            return cls.ENGINE_KURZGESAGT
+        return cls.ENGINE_PIXAR
 
     def render_project(
         self,
@@ -64,48 +79,37 @@ class VisualEngineRouter:
         output_mp4_path: str,
         category: str = "STEM",
         script_text: Optional[str] = None,
+        render_mode: str = "smart_hybrid",
         style_reference_path: Optional[str] = None,
         enable_omni_video: bool = False,
+        visual_revision_prompt: str = "",
+        custom_scenes: Optional[List[Dict[str, Any]]] = None,
         progress_callback: Optional[Callable[[str], None]] = None,
-    ) -> Dict:
-        """
-        Executes rendering through the selected engine, followed by
-        4-keyframe visual inspection.
-        Returns dict with output_mp4_path, snapshots, and critic_report.
-        """
+    ) -> Dict[str, Any]:
+        """Executes rendering through AIStoryboardEngine followed by 4-keyframe Visual Critic inspection."""
         def _cb(msg: str):
             if progress_callback:
                 progress_callback(msg)
             logger.info(msg)
 
-        _cb(f"[Engine] Initializing {self.get_display_name(self.visual_engine)}...")
+        _cb(f"[Engine] Initializing {self.get_display_name(self.visual_engine)} ({render_mode})...")
 
-        if self.visual_engine == self.ENGINE_BLENDER:
-            engine = BlenderOrchestrator(blender_path=self.blender_path)
-            rendered_video = engine.render_project(
-                project_dir=project_dir,
-                words_json_path=words_json_path,
-                output_mp4_path=output_mp4_path,
-                category=category,
-                script_text=script_text,
-                progress_callback=_cb,
-            )
-        else:
-            # Default for 2D_Crayon and 3D_Teardown: AIStoryboardEngine
-            engine = AIStoryboardEngine(config_path="config.json")
-            rendered_video = engine.render_project(
-                project_dir=project_dir,
-                words_json_path=words_json_path,
-                output_mp4_path=output_mp4_path,
-                category=category,
-                script_text=script_text,
-                visual_engine=self.visual_engine,
-                style_reference_path=style_reference_path,
-                enable_omni_video=enable_omni_video,
-                progress_callback=_cb,
-            )
+        engine = AIStoryboardEngine()
+        rendered_video = engine.render_project(
+            project_dir=project_dir,
+            words_json_path=words_json_path,
+            output_mp4_path=output_mp4_path,
+            category=category,
+            script_text=script_text,
+            visual_engine=self.visual_engine,
+            render_mode=render_mode,
+            style_reference_path=style_reference_path,
+            enable_omni_video=enable_omni_video,
+            visual_revision_prompt=visual_revision_prompt,
+            custom_scenes=custom_scenes,
+            progress_callback=_cb,
+        )
 
-        # Run Visual Critic 4-Keyframe automated inspection
         _cb("[Critic] Running Visual Critic 4-Keyframe automated inspection...")
         critic_report = generate_and_verify_snapshots(
             video_path=rendered_video,
@@ -120,6 +124,7 @@ class VisualEngineRouter:
         return {
             "video_path": rendered_video,
             "visual_engine": self.visual_engine,
+            "render_mode": render_mode,
             "snapshots": critic_report.get("snapshots", []),
             "critic_report": critic_report,
         }

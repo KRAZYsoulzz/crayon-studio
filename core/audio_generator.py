@@ -37,49 +37,73 @@ except ImportError:
     HAS_KOKORO = False
 
 DOCUMENTARY_VOICES = {
-    "en-US-GuyNeural": "en-US-GuyNeural",                                    # Smooth, authoritative documentary narrator (Recommended Default)
+    "en-US-AndrewNeural": "en-US-AndrewNeural",                              # Warm, natural, cinematic viral storyteller (Recommended Default)
+    "en-US-BrianNeural": "en-US-BrianNeural",                                # Crisp, engaging STEM / How-It's-Made explainer
+    "en-US-AvaNeural": "en-US-AvaNeural",                                    # Expressive, ultra-clear female narrator
     "en-US-ChristopherNeural": "en-US-ChristopherNeural",                    # Deep cinematic baritone narrator
-    "en-US-AndrewMultilingualNeural": "en-US-AndrewMultilingualNeural",      # Warm, natural viral storyteller
-    "en-US-BrianMultilingualNeural": "en-US-BrianMultilingualNeural",        # Energetic STEM / How-It's-Made explainer
-    "en-US-AvaMultilingualNeural": "en-US-AvaMultilingualNeural",            # Expressive, clear female narrator
-    "en-US-JennyNeural": "en-US-JennyNeural",                                # Warm, engaging female narrator
+    "en-US-EmmaNeural": "en-US-EmmaNeural",                                  # Friendly, warm documentary narrator
+    "en-US-GuyNeural": "en-US-GuyNeural",                                    # Authoritative traditional narrator
 }
 
 VOICE_MAP = {
     **DOCUMENTARY_VOICES,
-    # Legacy & Kokoro aliases mapped to high-expressiveness documentary neural models
-    "af_heart": "en-US-GuyNeural",
+    # Native mappings for older/multilingual keys
+    "en-US-AndrewMultilingualNeural": "en-US-AndrewNeural",
+    "en-US-BrianMultilingualNeural": "en-US-BrianNeural",
+    "en-US-AvaMultilingualNeural": "en-US-AvaNeural",
+    "af_heart": "en-US-AndrewNeural",
     "am_adam": "en-US-ChristopherNeural",
-    "af_bella": "en-US-AvaMultilingualNeural",
-    "af_nicole": "en-US-JennyNeural",
-    "am_michael": "en-US-ChristopherNeural",
-    "bf_emma": "en-US-AvaMultilingualNeural",
+    "af_bella": "en-US-AvaNeural",
+    "af_nicole": "en-US-EmmaNeural",
+    "am_michael": "en-US-BrianNeural",
+    "bf_emma": "en-US-AvaNeural",
 }
 
-DEFAULT_VOICE = "en-US-GuyNeural"
+DEFAULT_VOICE = "en-US-AndrewNeural"
 
 
 def clean_script_for_speech(text: str) -> str:
-    """Formats raw script text so numbers, hyphens, and pauses are spoken naturally.
+    """Formats raw script text so numbers, hyphens, temperatures, and pauses are spoken naturally.
 
-    - Replaces hyphenated numbers like '2,000-year' with '2,000 year'
+    - Fixes accidental spaces before punctuation (e.g. '1 ,700' -> '1,700')
+    - Converts temperatures (e.g. '1,700°C' / '1700 degrees Celsius' -> 'seventeen hundred degrees Celsius')
+    - Expands numeric measurements naturally ('3D' -> 'three-D', '1,700' -> 'seventeen hundred')
+    - Replaces hyphenated numbers like '2,000-year' with 'two thousand year'
     - Replaces 'A vs B' with 'A versus B'
-    - Replaces ranges '50-75' with '50 to 75'
     - Normalizes dashes and adds natural breathing cadence between clauses and sentences.
     """
     cleaned = text.strip()
-    # Replace em-dashes and long hyphens with comma pauses
+
+    # 1. Clean accidental spacing before punctuation (e.g. "1 ,700" -> "1,700" or "word ." -> "word.")
+    cleaned = re.sub(r"\s+([,.:;!?])", r"\1", cleaned)
+
+    # 2. Phonetic expansions for common technical/temperature terms so TTS doesn't stumble
+    cleaned = re.sub(r"\b1[,.]?700\s*(?:°\s*C|degrees?\s*Celsius)\b", "seventeen hundred degrees Celsius", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b2[,.]?000\s*(?:°\s*C|degrees?\s*Celsius)\b", "two thousand degrees Celsius", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b1[,.]?700\b", "seventeen hundred", cleaned)
+    cleaned = re.sub(r"\b2[,.]?000\b", "two thousand", cleaned)
+    cleaned = re.sub(r"\b15[,.]?000\b", "fifteen thousand", cleaned)
+    cleaned = re.sub(r"\b3D\b", "three-D", cleaned)
+    cleaned = re.sub(r"°C\b", " degrees Celsius", cleaned)
+    cleaned = re.sub(r"°F\b", " degrees Fahrenheit", cleaned)
+
+    # 3. Replace em-dashes and long hyphens with comma pauses
     cleaned = re.sub(r"[—–]", ", ", cleaned)
-    # Replace 'vs' or 'vs.' with 'versus'
+
+    # 4. Replace 'vs' or 'vs.' with 'versus'
     cleaned = re.sub(r"\bvs\.?\b", "versus", cleaned, flags=re.IGNORECASE)
-    # Replace hyphenated years/compounds like '2,000-year' -> '2,000 year'
+
+    # 5. Replace hyphenated years/compounds like '2,000-year' -> '2,000 year'
     cleaned = re.sub(r"(\d+(?:,\d+)?)-year", r"\1 year", cleaned, flags=re.IGNORECASE)
-    # Replace number ranges '155-170' -> '155 to 170'
+
+    # 6. Replace number ranges '155-170' -> '155 to 170'
     cleaned = re.sub(r"(\d+)-(\d+)", r"\1 to \2", cleaned)
-    # Normalize double spaces or double commas
+
+    # 7. Normalize double spaces or double commas
     cleaned = re.sub(r",\s*,", ",", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned)
-    # Ensure natural pause spacing after sentence terminators
+
+    # 8. Ensure natural pause spacing after sentence terminators
     cleaned = re.sub(r"([.!?])\s*", r"\1 ", cleaned)
     return cleaned.strip()
 
@@ -87,11 +111,11 @@ def clean_script_for_speech(text: str) -> str:
 def _trim_long_silences(
     audio_array: np.ndarray,
     sr: int = SAMPLE_RATE,
-    max_silence_sec: float = 0.48,
+    max_silence_sec: float = 0.65,
 ) -> np.ndarray:
     """Compress dead pauses longer than max_silence_sec down to max_silence_sec.
 
-    Preserves natural 400-500ms human breath and rhetorical pauses with smooth
+    Preserves natural 500-650ms human breath and rhetorical pauses with smooth
     cosine cross-fades to eliminate digital clicks and abrupt cuts.
     """
     if len(audio_array) == 0:
@@ -198,7 +222,7 @@ async def _synthesize_edge_tts(
     text: str,
     output_path: str,
     voice: str = DEFAULT_VOICE,
-    speed: float = 1.00,
+    speed: float = 0.96,
 ) -> float:
     """Synthesizes human neural voice via Edge-TTS and converts to 24kHz single-channel WAV."""
     mapped_voice = VOICE_MAP.get(voice, voice if "Neural" in voice else DEFAULT_VOICE)
@@ -217,6 +241,8 @@ async def _synthesize_edge_tts(
         ffmpeg_bin = FFmpegCompositor.find_ffmpeg_executable()
         cmd = [
             ffmpeg_bin,
+            "-hide_banner",
+            "-loglevel", "error",
             "-y",
             "-i",
             tmp_mp3,
@@ -232,15 +258,17 @@ async def _synthesize_edge_tts(
         if audio_data.ndim > 1:
             audio_data = audio_data.mean(axis=1)
 
-        # Preserve natural human breathing room (480ms threshold with smooth crossfade)
-        audio_data = _trim_long_silences(audio_data, sr=sr, max_silence_sec=0.48)
         # Normalize to -1.0 dBFS
         peak = np.max(np.abs(audio_data))
         if peak > 0:
             audio_data = audio_data / peak * 0.92
 
-        sf.write(output_path, audio_data, sr, subtype="PCM_16")
-        duration = len(audio_data) / sr
+        # Append 400ms of soft silent room tone at the end so the final word has room to ring out cleanly
+        pad_samples = int(sr * 0.40)
+        padded_audio = np.concatenate([audio_data, np.zeros(pad_samples, dtype=np.float32)])
+
+        sf.write(output_path, padded_audio, sr, subtype="PCM_16")
+        duration = len(padded_audio) / sr
         return duration
 
     finally:
@@ -255,7 +283,7 @@ def generate_voiceover(
     text: str,
     output_path: str,
     voice: str = DEFAULT_VOICE,
-    speed: float = 1.00,
+    speed: float = 0.96,
 ) -> str:
     """Synthesize voiceover WAV file at 24kHz using Edge-TTS Neural speech or Kokoro.
 

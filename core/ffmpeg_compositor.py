@@ -273,23 +273,34 @@ class FFmpegCompositor:
 
         has_foley = bool(foley_path and os.path.exists(foley_path) and os.path.getsize(foley_path) > 128)
 
-        # Construct filter_complex with 44.1kHz sample-rate locking and async timestamp drift correction
+        # Construct filter_complex with 1080x1920 Lanczos upscaling (for 720p Omni efficiency),
+        # razor-sharp 1080p ASS vector subtitle burn-in, and 44.1kHz audio sync locking
+        v_chain = (
+            f"[0:v]fps={self.fps},"
+            f"scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop=1080:1920,"
+            f"unsharp=3:3:0.5:3:3:0.0,"
+            f"ass={local_ass_filename}[vout]"
+        )
         if has_foley:
             filter_complex = (
-                f"[0:v]fps={self.fps},ass={local_ass_filename}[vout];"
+                f"{v_chain};"
                 f"[1:a]aresample=44100:async=1:first_pts=0,pan=stereo|c0=c0|c1=c0,volume=1.0[vo];"
                 f"[2:a]aresample=44100:async=1:first_pts=0,volume={foley_volume:.2f}[sfx];"
                 f"[vo][sfx]amix=inputs=2:duration=first:dropout_transition=2[aout]"
             )
         else:
             filter_complex = (
-                f"[0:v]fps={self.fps},ass={local_ass_filename}[vout];"
+                f"{v_chain};"
                 f"[1:a]aresample=44100:async=1:first_pts=0,pan=stereo|c0=c0|c1=c0,volume=1.0[aout]"
             )
 
         cmd = [
             self.ffmpeg_path,
+            "-hide_banner",
+            "-loglevel", "warning",
             "-y",
+            "-an",
             "-i", os.path.abspath(video_path),
             "-i", os.path.abspath(voiceover_path),
         ]
@@ -307,10 +318,10 @@ class FFmpegCompositor:
             "-fps_mode", "cfr",
             "-r", str(self.fps),
             "-c:a", "aac",
+            "-profile:a", "aac_low",
             "-b:a", "192k",
             "-ar", "44100",
             "-movflags", "+faststart",
-            "-shortest",
             os.path.abspath(output_mp4_path),
         ])
 

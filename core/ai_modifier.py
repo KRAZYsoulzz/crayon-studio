@@ -1,145 +1,285 @@
-"""In-App AI Assistant for Script & Hook Revisions.
+"""In-App AI Assistant for Script Generation & Surgical Revisions.
 
-Provides intelligent, topic-aware script authoring and alterations:
-- High-friction viral hook injection
-- 155-170 word target length (62-68 seconds at 1.05x speed)
-- Seamless audio loop closures (ending sentence flows naturally back into opening hook)
-- Factual, engaging scientific & engineering narrative structure
-- TikTok Shop organic product bridge integration
+Uses the Gemini Interactions API (`gemini-3.8-flash` with `store=False`) to author
+and revise short-form documentary scripts using the exact on-screen project state.
+Includes a factual Wikipedia-grounded fallback writer when offline or when API credits
+are depleted (HTTP 402), and never inserts video titles or revision instructions as mad-libs.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
+import urllib.parse
+import urllib.request
 from typing import Optional
 
 logger = logging.getLogger("crayon_studio.ai_modifier")
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
-# =====================================================================
-# CURATED HIGH-RETENTION MASTER SCRIPTS (160-168 Words, Seamless Loops)
-# =====================================================================
-
-MASTER_SCRIPTS = {
-    "architecture_roman_concrete": (
-        "Ancient Roman concrete gets stronger the longer it sits in crashing ocean waves, while modern concrete crumbles in fifty years. "
-        "For decades, modern civil engineers couldn't figure out why ancient harbors in Italy survived two millennia of salt water erosion. "
-        "The breakthrough came when geologists put Roman seawalls under electron microscopes. "
-        "The Romans didn't just mix sand and gravel; they forged their concrete using reactive volcanic ash called pozzolana, slaked lime, and chunks of quicklime hot-mixed together. "
-        "When ocean saltwater infiltrates the microscopic pores, it doesn't rot the internal framework. "
-        "Instead, the alkaline brine dissolves the volcanic minerals and reacts with the lime clasts, precipitating interlocking crystals of a rare mineral called aluminous tobermorite. "
-        "These microscopic crystals expand into microscopic voids, literally stitching microcracks closed like living bone tissue. "
-        "The ocean isn't destroying the seawall—it's actively fueling the chemical reaction that cements it tighter with every passing decade, which is why modern architects are still racing to replicate how ancient Roman concrete gets stronger the longer it sits in crashing ocean waves."
-    ),
-    "engineering_piezo_lighter": (
-        "Inside every push-button lighter is a tiny power plant that generates fifteen thousand volts without a single battery. "
-        "Most people assume there is a miniature watch battery hidden in the handle, but watch what happens when you pull the casing apart. "
-        "When your thumb presses the spring-loaded plunger down, it compresses a heavy steel spring until a tiny internal hammer slips off its catch. "
-        "That hammer slams into a microscopic quartz crystal at extreme velocity. "
-        "Under that sudden mechanical impact, the crystal lattice deforms violently, forcing positive and negative ions out of alignment. "
-        "This sudden charge separation creates a massive electrical potential that leaps across the spark gap as blazing blue plasma. "
-        "At the exact same millisecond, a plastic lever lifts the butane valve, spraying pressurized gas directly into the arc to ignite the flame. "
-        "It is one of the most brilliant pieces of solid-state physics, proving you can generate pure electricity every time you remember that inside every push-button lighter is a tiny power plant that generates fifteen thousand volts without a single battery."
-    ),
-    "how_its_made_brushless_motor": (
-        "Inside a brushless electric motor spinning at forty thousand rotations per minute, nothing is actually touching. "
-        "If you open up a high-performance drone motor or electric hypercar drive, you will find no physical gears, no carbon brushes, and zero friction contact. "
-        "At the center sits a rotor lined with alternating neodymium permanent magnets, balanced to within a fraction of a gram. "
-        "Surrounding the rotor is a stationary copper stator wound with three distinct electromagnetic coils. "
-        "Instead of using mechanical switches that wear down and throw sparks, an onboard microchip pulses three-phase electric currents through the copper windings in an ultra-precise sequence. "
-        "The energized coils produce a rotating magnetic wave that constantly repels and pulls the rotor magnets, dragging the shaft in an endless circular chase at dizzying speed. "
-        "Because there are no rubbing parts to create heat or wear out, the motor achieves over ninety percent energy efficiency, delivering pure electromagnetic torque every time you watch how inside a brushless electric motor spinning at forty thousand rotations per minute, nothing is actually touching."
-    ),
-    "escape_heist_vault_physics": (
-        "In 2003, a crew of thieves breached an impenetrable subterranean bank vault and escaped with one hundred million dollars without tripping a single alarm. "
-        "The vault was fortified behind a three-ton steel door protected by a combination dial, physical key, encrypted magnetic field detector, infrared motion sensors, and a seismic sensor tuned to detect footsteps. "
-        "On paper, breaching it was completely impossible. But the mastermind spent thirty months analyzing the blueprints and discovered an astonishing flaw in the physics of the sensors. "
-        "The infrared detectors monitored ambient heat differentials rather than solid objects. "
-        "By coating the sensors with a thin layer of ordinary hairspray, they temporarily insulated the thermal optics, blinding the alarm system. "
-        "Next, they placed a magnetic bypass across the door contacts to simulate a closed circuit before swinging the vault wide open. "
-        "Security systems are designed by humans, meaning every barrier contains a hidden structural vulnerability, which is the exact reason why in 2003, a crew of thieves breached an impenetrable subterranean bank vault and escaped with one hundred million dollars without tripping a single alarm."
-    ),
-    "psychology_illusion_control": (
-        "There is a bizarre glitch wired into your subconscious mind that casinos exploit every single day to influence your behavior. "
-        "Cognitive psychologists call this blindspot the Illusion of Control. "
-        "When gamblers throw dice across a craps table, high-speed cameras show they instinctively roll with gentle finesse when they need low numbers, and throw with aggressive force when they need high numbers. "
-        "Logically, physics and probability do not care about arm speed once the dice leave your fingertips. "
-        "Yet human brains crave pattern recognition so desperately that we trick ourselves into believing our personal intention dictates purely random events. "
-        "From pressing elevator buttons multiple times to superstitious game-day rituals, we manufacture false agency to shield ourselves from existential uncertainty. "
-        "The moment you recognize this psychological blindspot, you begin catching yourself doing it constantly throughout your daily life, especially when you realize how there is a bizarre glitch wired into your subconscious mind that casinos exploit every single day to influence your behavior."
-    ),
-    "stem_vacuum_paradox": (
-        "If you drop a heavy bowling ball and a lightweight feather inside a giant vacuum chamber, they hit the floor at the exact same millisecond. "
-        "Galileo formulated this counterintuitive law of physics over four hundred years ago, but watching it unfold before your eyes looks like an outright glitch in our physical simulation. "
-        "Under ordinary room conditions, aerodynamic air resistance pushes upward against the feather's broad surface, causing it to flutter and drift downward slowly. "
-        "But once you extract all the air molecules and drop them in a complete vacuum, atmospheric drag drops to zero. "
-        "Without air molecules pushing back, planetary gravity accelerates every single object at the identical rate: nine point eight meters per second squared, regardless of its mass, size, or material composition. "
-        "The universe proves that gravity doesn't accelerate weight; it curves spacetime itself, pulling massive steel and fragile feathers with the exact same celestial urgency, which is why if you drop a heavy bowling ball and a lightweight feather inside a giant vacuum chamber, they hit the floor at the exact same millisecond."
-    ),
-}
+_LAST_AI_STATUS: str = "OK"
 
 
-def _clean_topic_name(topic: str) -> str:
-    """Extracts a clean, articulate subject name from a topic or title string."""
-    cleaned = re.sub(r"^(The\s+)?(Hidden\s+Science\s+of|Secret\s+Inside|Physics\s+Paradox\s+of|Mystery\s+of)\s+", "", topic, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\([^)]*\)", "", cleaned)
-    cleaned = re.sub(r"\[[^\]]*\]", "", cleaned)
-    cleaned = re.sub(r"\|.*$", "", cleaned)
-    cleaned = re.sub(r":.*$", "", cleaned)
-    cleaned = re.sub(r"[#@][\w]+", "", cleaned)
-    cleaned = " ".join(cleaned.split()).strip(".,;:!- ")
+def get_last_ai_status() -> str:
+    """Return the status note from the most recent script generation/revision call."""
+    return _LAST_AI_STATUS
+
+
+def _resolve_gemini_api_key(api_key: Optional[str] = None) -> str:
+    """Resolve Gemini API key from parameter, environment variable, or config.json."""
+    if api_key and api_key.strip():
+        return api_key.strip()
+    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                return str(cfg.get("gemini_api_key", "")).strip()
+        except Exception:
+            pass
+    return ""
+
+
+def _clean_spoken_prose(text: str) -> str:
+    """Strip any markdown formatting, stage labels, or quotes from LLM script output."""
+    cleaned = text.strip()
+    if "```" in cleaned:
+        parts = cleaned.split("```")
+        cleaned = max(parts, key=len).strip()
+    cleaned = re.sub(r"\[(?:Act|Scene|Hook|Intro|Outro|Bridge|Loop)[^\]]*\]\s*:?", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\*\*(.*?)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"\*(.*?)\*", r"\1", cleaned)
+    cleaned = re.sub(r"^#+\s+.*$", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().strip('"')
+    return cleaned
+
+
+def _extract_natural_subject(topic: str) -> str:
+    """Extracts a natural lowercase subject noun phrase from a video title.
+
+    For example:
+      'How Sand Turns to Glass' -> 'ordinary quartz sand'
+      'Why Bridges Don't Collapse' -> 'suspension bridges'
+      'How Piezoelectric Igniters Generate 15,000 Volts' -> 'piezoelectric igniters'
+    """
+    raw = (topic or "").strip()
+    cleaned = re.sub(r"\([^)]*\)|\[[^\]]*\]|\|.*$|#[a-zA-Z0-9_]+", "", raw).strip(" .,;:!?-")
+
+    # Pattern: "How X Turns to/into Y" -> "X"
+    m_turns = re.match(r"^(?:how|why)\s+(.+?)\s+(?:turns?\s+(?:to|into)|becomes?)\s+(.+)$", cleaned, flags=re.I)
+    if m_turns:
+        return m_turns.group(1).strip().lower()
+
+    # Pattern: "How/Why <Subject> <Verb...>"
+    cleaned = re.sub(
+        r"^(?:the\s+)?(?:hidden\s+science\s+of|secret\s+inside|physics\s+paradox\s+of|mystery\s+of|how\s+does|how\s+do|how|why\s+does|why\s+do|why|what\s+makes|what\s+happens\s+when|inside)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    # Strip trailing action clauses ("generate 15,000 volts", "work under pressure", etc.)
+    cleaned = re.sub(
+        r"\s+(?:works?|generates?|creates?|produces?|turns?|becomes?|survives?|cross(?:es)?|carries|transmit(?:s)?|without\b).*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip(" .,;:!?-")
+
     words = cleaned.split()
-    if len(words) > 6:
-        words = words[:6]
-    return " ".join(words).strip(".,;:!- ")
+    if len(words) > 5:
+        words = words[:5]
+    subj = " ".join(words).lower()
+    return subj if subj else "this everyday material"
 
 
-def _generate_dynamic_topic_script(
+def _fetch_wikipedia_facts(topic: str) -> list[str]:
+    """Fetches real scientific sentences from Wikipedia's REST API for the given topic."""
+    t_lower = topic.lower()
+    if "sand" in t_lower and "glass" in t_lower:
+        search_terms = ["Glass production", "Soda-lime glass", "Fused quartz"]
+    else:
+        q = re.sub(r"^(?:how|why|what|when|where|inside|the)\s+", "", topic.strip(), flags=re.I)
+        search_terms = [q]
+
+    collected_sentences: list[str] = []
+    headers = {"User-Agent": "CrayonStudio/2.0 (Educational Video Studio)"}
+
+    for term in search_terms:
+        try:
+            url = (
+                "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch="
+                + urllib.parse.quote(term)
+                + "&utf8=&format=json"
+            )
+            req = urllib.request.Request(url, headers=headers)
+            data = json.loads(urllib.request.urlopen(req, timeout=3.5).read().decode("utf-8"))
+            hits = data.get("query", {}).get("search", [])
+            for hit in hits[:2]:
+                title = hit.get("title", "")
+                if not title or "disambiguation" in title.lower() or title.lower() == "hourglass":
+                    continue
+                sum_url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(title)
+                sum_req = urllib.request.Request(sum_url, headers=headers)
+                sum_data = json.loads(urllib.request.urlopen(sum_req, timeout=3.5).read().decode("utf-8"))
+                extract = sum_data.get("extract", "")
+                if extract:
+                    # Clean parenthetical chemical formulas or pronunciations for smooth spoken narration
+                    clean_ext = re.sub(r"\s*\([^)]*\)", "", extract)
+                    clean_ext = re.sub(r"\s+", " ", clean_ext).strip()
+                    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", clean_ext) if len(s.split()) >= 7]
+                    for s in sents:
+                        if s not in collected_sentences:
+                            collected_sentences.append(s)
+                if len(collected_sentences) >= 6:
+                    break
+        except Exception:
+            continue
+        if len(collected_sentences) >= 6:
+            break
+
+    return collected_sentences
+
+
+def _synthesize_offline_script(
     topic: str,
+    prompt: str = "",
     category: str = "STEM",
+    target_duration: int = 65,
     tiktok_product: Optional[str] = None,
 ) -> str:
-    """Synthesizes a cohesive, factually grounded 5-act narrative for any novel topic.
+    """Natural, standalone factual script generator when Gemini API credits are depleted (HTTP 402) or offline.
 
-    Guarantees 155-170 words, natural cadence, and a seamless closing loop.
+    Generates 61-70 second scripts (145-165 words) for TikTok Creator Rewards monetization.
+    Never inserts the raw video title as a mad-lib ('Inside How Sand Turns to Glass').
     """
-    clean_subj = _clean_topic_name(topic) or "this mechanical mechanism"
+    t_lower = (topic or "").lower()
+    target_words = max(145, int(round(target_duration * 2.35)))
 
-    hook = f"Have you ever wondered what actually happens inside {clean_subj} when pushed to its physical limit?"
-    act2 = (
-        f" Most people assume that {clean_subj} operates on straightforward mechanical principles, "
-        f"but diagnostic high-speed imaging reveals a completely counterintuitive physical reality."
+    # Built-in high-craft standalone scripts for common physical/engineering topics + Wikipedia factual synthesis
+    if "sand" in t_lower and "glass" in t_lower:
+        hook = "Every grain of beach sand is actually a tiny crystal of silicon dioxide waiting to become solid glass."
+        body_pool = [
+            "In its natural state, quartz sand is completely opaque because millions of microscopic crystal facets scatter incoming light in every direction.",
+            "To break that crystalline grid, an industrial furnace must blast the raw silica past seventeen hundred degrees Celsius, snapping the rigid atomic bonds into a glowing liquid magma.",
+            "Because pure silica requires intense thermal energy, glassmakers introduce soda ash and limestone to lower the melting threshold and prevent the mixture from recrystallizing into cloudy rock.",
+            "The molten mixture is then floated onto a smooth bath of liquid tin, creating a perfectly flat ribbon of glass without requiring mechanical polishing.",
+            "As it rolls forward, the cooling rate is strictly controlled inside an annealing lehr, gently releasing internal structural stress that would otherwise cause the sheet to shatter under everyday pressure.",
+            "Because the atoms freeze into a disordered amorphous solid before crystalline lattice boundaries can reform, visible light photons pass straight through without scattering.",
+            "Even an atmospheric bolt of lightning striking desert sand can instantly trigger this exact reaction, leaving behind hollow glassy tubes called fulgurites.",
+        ]
+    else:
+        wiki_sents = _fetch_wikipedia_facts(topic)
+        subj = _extract_natural_subject(topic)
+        if wiki_sents:
+            hook = wiki_sents[0]
+            body_pool = wiki_sents[1:] + [
+                f"When engineers examine {subj} under high-speed thermal diagnostics, each stage of the process depends on precise energy transfer at the microscopic level.",
+                f"Without that exact balance of temperature, pressure, and material geometry, the entire physical reaction would stall almost immediately.",
+                f"Across modern industrial manufacturing, controlling how rapidly {subj} transitions between states determines whether the final product holds up under extreme mechanical stress.",
+                f"By analyzing the molecular alignment in real time, specialists can eliminate micro-fractures before the structure permanently hardens.",
+                f"Every sub-millimeter adjustment during production directly influences how the final assembly performs in high-demand environments.",
+            ]
+        else:
+            hook = f"At first glance, {subj} seems completely ordinary, until you look at the physics happening beneath the surface."
+            body_pool = [
+                f"Instead of relying on brute force, the internal structure of {subj} channels heat and kinetic energy through tightly aligned microscopic pathways.",
+                "As pressure builds across the primary boundary, individual molecules rearrange in milliseconds to absorb the load without fracturing.",
+                "Every stage of that transformation is governed by how fast energy can move from one layer to the next before thermal stress takes over.",
+                f"To keep the mechanism stable, the entire system is engineered with fail-safe tolerances that counteract vibrational friction.",
+                "Once the reaction reaches equilibrium, the material locks into a remarkably stable state that can endure extreme real-world conditions.",
+                "Understanding that exact sequence allows modern engineers to push performance boundaries far beyond conventional limits.",
+            ]
+
+    loop_tail = hook[0].lower() + hook[1:].rstrip(".!?")
+    closing_sentence = f"And that atomic transformation is the exact reason why {loop_tail}."
+
+    bridge_sentence = ""
+    if tiktok_product and tiktok_product.strip() and "none" not in tiktok_product.lower():
+        bridge_sentence = f"If you want to test this yourself, check out the {tiktok_product.strip()} linked below."
+
+    assembled = [hook]
+    for sent in body_pool:
+        candidate = " ".join(assembled + ([bridge_sentence] if bridge_sentence else []) + [closing_sentence])
+        if len(candidate.split()) < target_words - 8:
+            assembled.append(sent)
+        else:
+            break
+
+    if bridge_sentence:
+        assembled.append(bridge_sentence)
+    assembled.append(closing_sentence)
+    return " ".join(assembled)
+
+
+def _revise_offline_script(
+    script_text: str,
+    prompt: str,
+    category: str = "STEM",
+    target_duration: int = 65,
+    tiktok_product: Optional[str] = None,
+    topic: str = "",
+) -> str:
+    """Natural, sentence-safe offline script revision fallback that never pastes meta-prompts into the script."""
+    clean_prompt = prompt.strip().lower()
+
+    # If the existing script contains broken mad-libs (e.g. "Inside How ...") OR user asks to make it natural / standalone / stop referring to title:
+    has_title_madlib = bool(topic and topic.lower() in script_text.lower() and re.search(r"\b(how|why|what)\b", topic, re.I))
+    is_meta_cleanup = any(
+        w in clean_prompt
+        for w in ["stop", "refer", "video name", "title", "standalone", "natural", "weird", "make sense", "rewrite"]
     )
-    act3 = (
-        f" When external forces strike the framework, the kinetic energy does not travel in a simple straight vector. "
-        f"Instead, microscopic internal geometry redirects the shear stress across an interconnected structural lattice before microcracks can propagate."
-    )
-    act4 = (
-        f" Rather than resisting the impact with brittle resistance, the material dissipates shock waves across flexible load-bearing pathways, "
-        f"allowing the assembly to absorb immense pressure without catastrophic failure."
-    )
-    bridge = ""
-    if tiktok_product and "none" not in tiktok_product.lower():
-        bridge = f" If you want to sketch out the structural engineering of {clean_subj} yourself, check out the {tiktok_product} linked down below."
+    if has_title_madlib or is_meta_cleanup or not script_text.strip():
+        return _synthesize_offline_script(topic, "", category, target_duration, tiktok_product)
 
-    closing = f" Modern engineers study this exact dynamic distribution to build stronger machinery, which is why you have to wonder what actually happens inside {clean_subj} when pushed to its physical limit."
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", script_text.strip()) if s.strip()]
+    if not sentences:
+        return _synthesize_offline_script(topic, "", category, target_duration, tiktok_product)
 
-    full = (hook + act2 + act3 + act4 + bridge + closing).strip()
-    words = full.split()
+    subj = _extract_natural_subject(topic)
 
-    if len(words) < 155:
-        padding = " Scientists spent years conducting stress tests to verify that every load vector remains balanced in extreme environments."
-        full = (hook + act2 + act3 + padding + act4 + bridge + closing).strip()
-        words = full.split()
+    if any(w in clean_prompt for w in ["hook", "punchier", "opening", "start", "shock"]):
+        if "sand" in topic.lower() and "glass" in topic.lower():
+            new_hook = "Every window you look through started out as opaque beach sand blasted past seventeen hundred degrees Celsius."
+        else:
+            new_hook = f"What actually happens inside {subj} at peak intensity defies almost every everyday intuition."
+        sentences[0] = new_hook
+        loop_tail = new_hook[0].lower() + new_hook[1:].rstrip(".!?")
+        sentences[-1] = f"And that atomic chain reaction is the exact reason why {loop_tail}."
 
-    if len(words) > 170:
-        words = words[:165]
-        # Re-attach clean closing loop
-        closing_loop = f" which is why you have to wonder what actually happens inside {clean_subj} when pushed to its physical limit."
-        full = " ".join(words[:148]).rstrip(".,;:!-") + "," + closing_loop
+    elif any(w in clean_prompt for w in ["loop", "seamless", "repeat", "circular"]):
+        hook = sentences[0]
+        loop_tail = hook[0].lower() + hook[1:].rstrip(".!?")
+        sentences[-1] = f"And that continuous atomic reaction is the exact reason why {loop_tail}."
 
-    return full
+    elif any(w in clean_prompt for w in ["shorten", "compress", "faster", "concise", "trim", "shorter"]):
+        if len(sentences) > 4:
+            mid_candidates = list(range(1, len(sentences) - 1))
+            drop_idx = min(mid_candidates, key=lambda idx: len(sentences[idx]))
+            sentences.pop(drop_idx)
+
+    elif any(w in clean_prompt for w in ["expand", "longer", "detail", "elaborate", "more", "monetize", "60", "61"]):
+        extra_facts = _fetch_wikipedia_facts(topic)
+        new_detail = next((f for f in extra_facts if f not in sentences), "")
+        if not new_detail:
+            new_detail = "At the microscopic scale, that rapid shift in temperature and molecular bonding happens in a fraction of a second."
+        sentences.insert(max(1, len(sentences) - 1), new_detail)
+
+    # Ensure offline revised script maintains seamless loop ending back into hook
+    if len(sentences) >= 2:
+        hook = sentences[0]
+        last_s = sentences[-1].lower()
+        if not any(k in last_s for k in ["reason why", "exact why", "powers why", "is why"]):
+            loop_tail = hook[0].lower() + hook[1:].rstrip(".!?")
+            sentences.append(f"And that remarkable transformation is the exact reason why {loop_tail}.")
+
+    return " ".join(sentences)
 
 
 def modify_script(
@@ -149,107 +289,127 @@ def modify_script(
     target_duration: int = 65,
     tiktok_product: Optional[str] = None,
     topic: str = "",
+    api_key: Optional[str] = None,
+    confusion_points: str = "",
+    complaints: str = "",
+    content_gaps: str = "",
 ) -> str:
-    """Apply intelligent script revision based on prompt instruction and topic context.
+    """Generate a new viral script or surgically revise the existing on-screen script using Gemini 3.8 Flash.
 
-    Args:
-        script_text: Existing script content. If empty, generates a viral 155-170 word script.
-        prompt: User's revision command (e.g., 'Make hook punchier', 'Add TikTok shop bridge').
-        category: Niche category (STEM, Escape/Heist, Architecture, Psychology, Engineering, How It's Made).
-        target_duration: Desired video duration in seconds.
-        tiktok_product: Optional product to weave into the narrative.
-        topic: Selected trend topic from Tab 1 to dynamically weave into the script.
-
-    Returns:
-        Revised script string with viral pacing (155-170 words) and seamless loop structure.
+    Strictly targets 61-70 seconds (~145-165 words) for TikTok Creator Rewards monetization and
+    enforces a seamless loop ending.
     """
-    clean_prompt = prompt.strip().lower()
-    text = script_text.strip()
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    global _LAST_AI_STATUS
+    _LAST_AI_STATUS = "Gemini 3.8 Flash"
 
-    # If script is empty, deliver the topic-specific masterpiece
-    if not text:
-        comb_topic = (topic + " " + category).lower()
+    resolved_key = _resolve_gemini_api_key(api_key)
+    existing = script_text.strip()
+    target_words = max(145, int(round(target_duration * 2.35)))
+    min_words = max(140, target_words - 8)
+    max_words = min(170, target_words + 10)
 
-        if any(w in comb_topic for w in ["concrete", "roman", "cement", "seawall", "pantheon", "architecture"]):
-            return MASTER_SCRIPTS["architecture_roman_concrete"]
-        elif any(w in comb_topic for w in ["piezo", "lighter", "spark", "volt", "quartz", "engineering"]):
-            return MASTER_SCRIPTS["engineering_piezo_lighter"]
-        elif any(w in comb_topic for w in ["motor", "brushless", "rotor", "stator", "rpm", "how it's made"]):
-            return MASTER_SCRIPTS["how_its_made_brushless_motor"]
-        elif any(w in comb_topic for w in ["vault", "heist", "alarm", "safe", "thief", "escape"]):
-            return MASTER_SCRIPTS["escape_heist_vault_physics"]
-        elif any(w in comb_topic for w in ["brain", "casino", "gambler", "psychology", "illusion"]):
-            return MASTER_SCRIPTS["psychology_illusion_control"]
-        elif any(w in comb_topic for w in ["vacuum", "feather", "bowling", "galileo", "gravity"]):
-            return MASTER_SCRIPTS["stem_vacuum_paradox"]
-        elif topic:
-            return _generate_dynamic_topic_script(topic, category=category, tiktok_product=tiktok_product)
-        else:
-            cat_lower = category.lower()
-            if "arch" in cat_lower:
-                return MASTER_SCRIPTS["architecture_roman_concrete"]
-            elif "eng" in cat_lower:
-                return MASTER_SCRIPTS["engineering_piezo_lighter"]
-            elif "how" in cat_lower:
-                return MASTER_SCRIPTS["how_its_made_brushless_motor"]
-            elif "heist" in cat_lower or "escape" in cat_lower:
-                return MASTER_SCRIPTS["escape_heist_vault_physics"]
-            elif "psych" in cat_lower:
-                return MASTER_SCRIPTS["psychology_illusion_control"]
+    has_product = bool(tiktok_product and tiktok_product.strip() and "none" not in tiktok_product.lower())
+    product_instruction = (
+        f"Naturally weave in a 1-sentence organic mention of '{tiktok_product}' near the end (before the final loop sentence)."
+        if has_product
+        else "Do NOT include any product promotion, sponsor plug, or merchandise mention."
+    )
+
+    from core.usage_tracker import usage_tracker
+    if resolved_key and usage_tracker.api_status != "Depleted_402":
+        try:
+            from google import genai
+
+            client = genai.Client(api_key=resolved_key)
+
+            if not existing:
+                context_bits = []
+                if prompt:
+                    context_bits.append(f"Hook / Angle Hint: {prompt}")
+                if confusion_points:
+                    context_bits.append(f"Viewer Question to Answer Naturally: {confusion_points}")
+                if complaints:
+                    context_bits.append(f"Detail Competitors Missed: {complaints}")
+                if content_gaps:
+                    context_bits.append(f"Fascinating Deep-Dive Detail: {content_gaps}")
+                extra_context = "\n".join(context_bits)
+
+                gen_prompt = (
+                    f"You are an elite short-form science & engineering documentary writer (like Veritasium, Zack D. Films, or Kurzgesagt).\n"
+                    f"Write a natural, standalone voiceover script for a video titled: \"{topic or category}\".\n"
+                    f"Category: {category}\n"
+                    f"Target Spoken Duration: {target_duration} seconds (CRITICAL: Strictly 61 to 70 seconds, {min_words} to {max_words} words).\n"
+                    f"{extra_context}\n"
+                    f"{product_instruction}\n\n"
+                    "CRITICAL NON-NEGOTIABLE RULES:\n"
+                    f"1. TIKTOK CREATOR REWARDS MONETIZATION (OVER 60 SECONDS MANDATORY):\n"
+                    f"   The script MUST be spoken between 61 and 70 seconds long (aim for 65 seconds, {min_words} to {max_words} words). On TikTok, any video 60 seconds or under earns $0.00 because it is disqualified from monetization. You MUST provide enough detailed, step-by-step physical explanation, concrete real-world numbers/temperatures, and vivid visual descriptions to naturally reach at least {min_words} words.\n\n"
+                    "2. SEAMLESS VIRAL LOOP ENDING (CRITICAL FOR 100%+ RETENTION):\n"
+                    "   TikTok replays videos instantly. The very final sentence MUST be structured so that when the video restarts, the last words seamlessly and grammatically flow right back into the opening hook sentence.\n"
+                    "   - Pattern A (Circular Echo Loop): The final sentence repeats the core hook premise seamlessly (e.g., Hook: 'Every grain of beach sand is actually a tiny crystal waiting to become solid glass.' -> Ending: 'And that atomic transformation at seventeen hundred degrees is the exact reason why every grain of beach sand is actually a tiny crystal waiting to become solid glass.')\n"
+                    "   - Pattern B (Bridge Loop): The final sentence bridges directly into the first word of the hook (e.g., Hook: 'Inside your smartphone is a microscopic gyroscope...' -> Ending: 'And that tiny vibrating silicon ring is the exact reason why...')\n\n"
+                    "3. STANDALONE FACTUAL NARRATION (NO TITLE MAD-LIBS):\n"
+                    "   NEVER repeat the video title as a noun phrase (e.g., NEVER say 'Inside How Sand Turns to Glass'). Write directly about the real physical objects and mechanisms (e.g., quartz sand grains, silicon dioxide crystals, molten glass at 1,700°C).\n\n"
+                    f"4. Output ONLY the spoken narration prose ({min_words} to {max_words} words, no stage directions, no labels, no quotes)."
+                )
             else:
-                return MASTER_SCRIPTS["stem_vacuum_paradox"]
+                gen_prompt = (
+                    f"You are revising a short-form documentary voiceover script about \"{topic}\".\n"
+                    f"Target Duration: {target_duration} seconds (CRITICAL: Strictly 61 to 70 seconds, {min_words} to {max_words} words for TikTok Creator Rewards monetization).\n"
+                    f"{product_instruction}\n\n"
+                    f"USER REVISION INSTRUCTION: {prompt or 'Make the script flow naturally as standalone documentary narration.'}\n\n"
+                    f"CURRENT ON-SCREEN SCRIPT:\n\"\"\"\n{existing}\n\"\"\"\n\n"
+                    "CRITICAL RULES:\n"
+                    f"1. Follow the USER REVISION INSTRUCTION directly while maintaining a length of {min_words} to {max_words} words (strictly over 60 seconds for TikTok monetization).\n"
+                    "2. SEAMLESS VIRAL LOOP: Preserve or craft a seamless loop ending where the final sentence smoothly connects back into the opening hook sentence when the video replays.\n"
+                    "3. NEVER refer to the video title as an object (never say 'Inside How Sand Turns to Glass') and NEVER paste the user's instruction text into the script.\n"
+                    "4. Output ONLY the revised spoken narration text."
+                )
 
-    # In-place script revisions
-    full_text = " ".join(lines)
+            from core.usage_tracker import usage_tracker
 
-    # 1. Punchier Hook Revision
-    if any(w in clean_prompt for w in ["hook", "punchier", "start", "opening"]):
-        clean_subj = _clean_topic_name(topic) or "this phenomenon"
-        hook_options = {
-            "Engineering": f"Inside every {clean_subj} is a hidden engineering marvel that violates common sense.",
-            "Architecture": f"{clean_subj.title()} gets stronger under the exact forces that should destroy it.",
-            "How It's Made": f"Inside {clean_subj}, nothing is actually touching—even at maximum velocity.",
-            "Escape/Heist": f"This was labeled an impenetrable security barrier until researchers exposed a fatal design flaw.",
-            "Psychology": f"Your brain is deceiving you right now about how {clean_subj} actually works.",
-            "STEM": f"If you test {clean_subj} in a high-speed diagnostic lab, common intuition completely breaks down.",
-        }
-        new_hook = hook_options.get(category, f"Watch what happens when you examine {clean_subj} under extreme diagnostic load.")
-        sentences = re.split(r"(?<=[.!?])\s+", full_text)
-        if sentences:
-            sentences[0] = new_hook
-            full_text = " ".join(sentences)
-        else:
-            full_text = new_hook + " " + full_text
+            interaction = client.interactions.create(
+                model="gemini-3.8-flash",
+                input=gen_prompt,
+                store=False,
+            )
+            output_text = getattr(interaction, "output_text", None)
+            if output_text and len(output_text.strip().split()) >= 30:
+                usage_tracker.record_interaction(
+                    "gemini-3.8-flash",
+                    "script_generation",
+                    interaction,
+                    prompt_chars=len(gen_prompt),
+                    output_chars=len(output_text),
+                )
+                cleaned = _clean_spoken_prose(output_text)
+                return cleaned
+        except Exception as e:
+            from core.usage_tracker import usage_tracker
 
-    # 2. Add TikTok Shop Organic Bridge
-    elif any(w in clean_prompt for w in ["product", "shop", "bridge", "monetize"]):
-        product_name = tiktok_product or "drawing stylus and drafting notebook"
-        bridge = f" If you want to study the internal blueprint of this mechanism yourself, check out the {product_name} linked down below."
-        sentences = re.split(r"(?<=[.!?])\s+", full_text)
-        if len(sentences) > 2:
-            sentences.insert(-1, bridge)
-            full_text = " ".join(sentences)
-        else:
-            full_text = full_text + bridge
+            usage_tracker.record_error("gemini-3.8-flash", "script_generation", e)
+            err_str = str(e)
+            if "402" in err_str or "prepayment credits are depleted" in err_str.lower():
+                _LAST_AI_STATUS = "Gemini API HTTP 402 (Prepayment credits depleted in AI Studio) - used factual fallback writer"
+            else:
+                _LAST_AI_STATUS = f"Gemini API offline ({err_str[:60]}) - used factual fallback writer"
+            logger.warning("Gemini 3.8 Flash script call failed (%s). Using factual fallback writer.", e)
+    else:
+        _LAST_AI_STATUS = "No Gemini API key configured - used factual fallback writer"
 
-    # 3. Shorten Script
-    elif any(w in clean_prompt for w in ["shorten", "compress", "faster"]):
-        sentences = re.split(r"(?<=[.!?])\s+", full_text)
-        if len(sentences) > 4:
-            # Drop middle elaboration sentence
-            mid = len(sentences) // 2
-            sentences.pop(mid)
-            full_text = " ".join(sentences)
-
-    # 4. Expand Script for 60s+ Target
-    elif any(w in clean_prompt for w in ["expand", "longer", "60s", "detail"]):
-        expansion = " When you inspect the cross-section under electron microscopy, you can clearly see how every single stress fracture is redirected into harmless compression zones."
-        sentences = re.split(r"(?<=[.!?])\s+", full_text)
-        if len(sentences) > 2:
-            sentences.insert(2, expansion)
-            full_text = " ".join(sentences)
-
-    words = full_text.split()
-    logger.info("Script modified (Words: %d). Prompt: '%s'", len(words), prompt)
-    return full_text
+    if not existing:
+        return _synthesize_offline_script(
+            topic=topic or category,
+            prompt=prompt,
+            category=category,
+            target_duration=target_duration,
+            tiktok_product=tiktok_product,
+        )
+    return _revise_offline_script(
+        script_text=existing,
+        prompt=prompt,
+        category=category,
+        target_duration=target_duration,
+        tiktok_product=tiktok_product,
+        topic=topic,
+    )
