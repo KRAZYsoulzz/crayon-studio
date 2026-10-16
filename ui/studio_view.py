@@ -5,7 +5,8 @@ from PySide6.QtWidgets import (
     QSplitter, QProgressBar, QFileDialog, QScrollArea, QFrame
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QTextOption
+from PySide6.QtWidgets import QSizePolicy
 from ui.glass_widgets import GlassCard, SelectableStyleCard, StepIndicatorBar
 from ui.storyboard_inspector import StoryboardInspectorWidget
 
@@ -295,12 +296,16 @@ class StudioView(QWidget):
         s2_layout.addLayout(s2_header)
 
         self.txt_script = QPlainTextEdit()
+        self.txt_script.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.txt_script.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         self.txt_script.setPlaceholderText(
             "Click '✨ Write My Script' above (or type your own script here). We'll automatically turn it into voiceover and visual scenes!"
         )
-        self.txt_script.setMinimumHeight(85)
+        self.txt_script.setMinimumHeight(110)
+        self.txt_script.setMaximumHeight(220)
+        self.txt_script.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.txt_script.textChanged.connect(self._on_duration_or_script_changed)
-        s2_layout.addWidget(self.txt_script, stretch=1)
+        s2_layout.addWidget(self.txt_script)
 
         # 1-Click Quick-Polish Chips + Plain-English Revision Input
         polish_row = QHBoxLayout()
