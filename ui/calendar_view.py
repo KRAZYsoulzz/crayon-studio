@@ -26,42 +26,43 @@ class CalendarView(QWidget):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(14)
 
-        header_card = GlassCard()
+        header_card = GlassCard(radius=8)
         h_layout = QHBoxLayout(header_card)
         h_layout.setContentsMargins(18, 14, 18, 14)
         h_layout.setSpacing(10)
 
-        lbl = QLabel("📅 Saved Projects & Schedule")
-        lbl.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 15px;")
+        lbl = QLabel("SAVED PROJECTS & SCHEDULE")
+        lbl.setProperty("class", "eyebrow")
+        lbl.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         h_layout.addWidget(lbl)
         h_layout.addStretch()
 
         lbl_sched = QLabel("Schedule Date:")
-        lbl_sched.setStyleSheet("color: #98989D; font-size: 12px;")
+        lbl_sched.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 12px;")
         h_layout.addWidget(lbl_sched)
         self.date_picker = QDateEdit()
         self.date_picker.setCalendarPopup(True)
         self.date_picker.setDate(QDate.currentDate())
         h_layout.addWidget(self.date_picker)
 
-        self.btn_assign_date = QPushButton("📅 Set Publish Date")
+        self.btn_assign_date = QPushButton("Set Date")
         self.btn_assign_date.setProperty("class", "chip")
         self.btn_assign_date.clicked.connect(self._assign_date)
         h_layout.addWidget(self.btn_assign_date)
 
-        self.btn_new_project = QPushButton("➕ Start New Video")
+        self.btn_new_project = QPushButton("New Project")
         self.btn_new_project.setProperty("class", "primary")
         self.btn_new_project.clicked.connect(self.new_project_requested.emit)
         h_layout.addWidget(self.btn_new_project)
 
-        self.btn_load_selected = QPushButton("📂 Open Selected Video")
+        self.btn_load_selected = QPushButton("Open Project")
         self.btn_load_selected.setProperty("class", "success")
         self.btn_load_selected.clicked.connect(self._open_selected)
         h_layout.addWidget(self.btn_load_selected)
 
         layout.addWidget(header_card)
 
-        table_card = GlassCard()
+        table_card = GlassCard(radius=8)
         t_layout = QVBoxLayout(table_card)
         t_layout.setContentsMargins(16, 16, 16, 16)
 

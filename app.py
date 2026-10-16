@@ -17,7 +17,7 @@ from core.uploader import upload_to_youtube, queue_tiktok_draft
 from core.usage_tracker import usage_tracker
 
 from ui.theme import STUDIO_DARK_QSS
-from ui.glass_widgets import LiveUsagePill, GlassCard
+from ui.glass_widgets import LiveUsagePill, GlassCard, MacTitleBar
 from ui.studio_view import StudioView
 from ui.research_view import ResearchView
 from ui.calendar_view import CalendarView
@@ -108,6 +108,8 @@ class CrayonStudioWindow(QMainWindow):
         self.setWindowTitle("CrayonStudio — Guided Short-Form Video Studio")
         self.resize(1440, 880)
         self.setMinimumSize(1100, 700)
+        # Frameless window with custom integrated macOS titlebar & traffic lights
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setStyleSheet(STUDIO_DARK_QSS)
 
         self._build_layout()
@@ -117,33 +119,45 @@ class CrayonStudioWindow(QMainWindow):
     def _build_layout(self):
         root = QWidget()
         self.setCentralWidget(root)
-        main_h = QHBoxLayout(root)
-        main_h.setContentsMargins(0, 0, 0, 0)
-        main_h.setSpacing(0)
+        root_v = QVBoxLayout(root)
+        root_v.setContentsMargins(0, 0, 0, 0)
+        root_v.setSpacing(0)
+
+        # Integrated macOS Titlebar
+        self.mac_titlebar = MacTitleBar(title="CrayonStudio — Guided Short-Form Video Studio", parent=self)
+        self.mac_titlebar.close_clicked.connect(self.close)
+        self.mac_titlebar.minimize_clicked.connect(self.showMinimized)
+        self.mac_titlebar.maximize_clicked.connect(self._toggle_maximize)
+        root_v.addWidget(self.mac_titlebar)
+
+        content_h = QHBoxLayout()
+        content_h.setContentsMargins(0, 0, 0, 0)
+        content_h.setSpacing(0)
+        root_v.addLayout(content_h, stretch=1)
 
         # 1. Left Frosted Sidebar Navigation Rail
         nav_rail = QFrame()
         nav_rail.setObjectName("navRail")
         nav_rail.setFixedWidth(226)
         nav_layout = QVBoxLayout(nav_rail)
-        nav_layout.setContentsMargins(14, 20, 14, 18)
+        nav_layout.setContentsMargins(14, 18, 14, 18)
         nav_layout.setSpacing(6)
 
-        brand_title = QLabel("CrayonStudio")
-        brand_title.setStyleSheet("color: #F5F5F7; font-weight: 800; font-size: 19px;")
-        nav_layout.addWidget(brand_title)
+        lbl_section = QLabel("CrayonStudio")
+        lbl_section.setStyleSheet("color: #f5f5f7; font-weight: 700; font-size: 17px; letter-spacing: -0.02em;")
+        nav_layout.addWidget(lbl_section)
 
-        brand_sub = QLabel("Guided Short-Form Video Maker")
-        brand_sub.setStyleSheet("color: #98989D; font-weight: 500; font-size: 11px;")
+        brand_sub = QLabel("Guided Short-Form Maker")
+        brand_sub.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; font-weight: 500;")
         nav_layout.addWidget(brand_sub)
         nav_layout.addSpacing(16)
 
         self.nav_buttons: list[QPushButton] = []
         nav_items = [
-            ("🎬  Create Video", 0),
-            ("🔍  Topic Finder", 1),
-            ("📅  Saved Videos", 2),
-            ("⚙️  Settings", 3),
+            ("Create Video", 0),
+            ("Topic Finder", 1),
+            ("Saved Videos", 2),
+            ("Settings", 3),
         ]
         for label, idx in nav_items:
             btn = QPushButton(label)
@@ -156,31 +170,33 @@ class CrayonStudioWindow(QMainWindow):
 
         nav_layout.addStretch()
 
-        # Quick Help / New Video Button in Sidebar
-        btn_quick_new = QPushButton("➕ Start Brand New Video")
+        # Quick New Video Button in Sidebar
+        btn_quick_new = QPushButton("New Project")
         btn_quick_new.setProperty("class", "chip")
         btn_quick_new.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_quick_new.clicked.connect(self.create_blank_project)
         nav_layout.addWidget(btn_quick_new)
         nav_layout.addSpacing(6)
 
-        model_card = GlassCard(radius=12, elevated=False)
+        model_card = GlassCard(radius=8, elevated=False)
         m_layout = QVBoxLayout(model_card)
         m_layout.setContentsMargins(12, 10, 12, 10)
-        m_layout.setSpacing(3)
-        lbl_m_hdr = QLabel("Active Studio Engines")
-        lbl_m_hdr.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 11px;")
+        m_layout.setSpacing(4)
+        lbl_m_hdr = QLabel("ACTIVE ENGINES")
+        lbl_m_hdr.setProperty("class", "eyebrow")
+        lbl_m_hdr.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         m_layout.addWidget(lbl_m_hdr)
         self.lbl_model_stack = QLabel(
-            "• Writer: Gemini 3.8 Flash (Fallback: 3.6/3.5)\n"
-            "• Art: Nano Banana 2.1 (9:16 Keyframes)\n"
-            "• Video: fal.ai Wan (480p->1080p Lanczos)"
+            "• Writer: Gemini 3.8 Flash\n"
+            "• Art: Nano Banana 2.1 (9:16)\n"
+            "• Video: fal.ai Wan (1080p)"
         )
-        self.lbl_model_stack.setStyleSheet("color: #98989D; font-size: 11px;")
+        self.lbl_model_stack.setProperty("class", "mono")
+        self.lbl_model_stack.setStyleSheet("color: rgba(255, 255, 255, 0.55); font-size: 11px;")
         m_layout.addWidget(self.lbl_model_stack)
         nav_layout.addWidget(model_card)
 
-        main_h.addWidget(nav_rail)
+        content_h.addWidget(nav_rail)
 
         # 2. Center Column: Top Glass Header Bar + Workspace Stack
         center_col = QWidget()
@@ -190,13 +206,13 @@ class CrayonStudioWindow(QMainWindow):
 
         top_bar = QFrame()
         top_bar.setObjectName("topBar")
-        top_bar.setFixedHeight(54)
+        top_bar.setFixedHeight(50)
         tb_layout = QHBoxLayout(top_bar)
         tb_layout.setContentsMargins(20, 8, 20, 8)
         tb_layout.setSpacing(12)
 
         self.lbl_active_project = QLabel("Current Video: How Sand Turns to Glass")
-        self.lbl_active_project.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 14px;")
+        self.lbl_active_project.setStyleSheet("color: #f5f5f7; font-weight: 600; font-size: 13px; letter-spacing: -0.01em;")
         tb_layout.addWidget(self.lbl_active_project)
         tb_layout.addStretch()
 
@@ -217,14 +233,20 @@ class CrayonStudioWindow(QMainWindow):
         self.workspace_stack.addWidget(self.settings_view)
         center_v.addWidget(self.workspace_stack, stretch=1)
 
-        main_h.addWidget(center_col, stretch=1)
+        content_h.addWidget(center_col, stretch=1)
 
         # 3. Persistent Right 9:16 Phone Preview & Publish Dock
         self.player_dock = PlayerInspectorDock()
-        main_h.addWidget(self.player_dock, 0)
+        content_h.addWidget(self.player_dock, 0)
 
         self._connect_signals()
         self.switch_nav(0)
+
+    def _toggle_maximize(self):
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
 
     def _connect_signals(self):
         self.usage_pill.open_settings_requested.connect(lambda: self.switch_nav(3))

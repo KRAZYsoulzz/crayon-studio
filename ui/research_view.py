@@ -29,13 +29,14 @@ class ResearchView(QWidget):
         layout.setSpacing(14)
 
         # Search Header Card
-        search_card = GlassCard()
+        search_card = GlassCard(radius=8)
         s_layout = QHBoxLayout(search_card)
         s_layout.setContentsMargins(18, 14, 18, 14)
         s_layout.setSpacing(12)
 
-        lbl = QLabel("🔍 Topic & Channel Finder")
-        lbl.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 15px;")
+        lbl = QLabel("TOPIC & CHANNEL FINDER")
+        lbl.setProperty("class", "eyebrow")
+        lbl.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         s_layout.addWidget(lbl)
 
         self.input_query = QLineEdit()
@@ -44,13 +45,14 @@ class ResearchView(QWidget):
         self.input_query.returnPressed.connect(self._trigger_search)
         s_layout.addWidget(self.input_query, stretch=1)
 
-        self.btn_scrape = QPushButton("🔍 Find Viral Topics & Ideas")
+        self.btn_scrape = QPushButton("Search Topics")
         self.btn_scrape.setProperty("class", "primary")
         self.btn_scrape.clicked.connect(self._trigger_search)
         s_layout.addWidget(self.btn_scrape)
 
         self.lbl_status = QLabel("Ready")
-        self.lbl_status.setStyleSheet("color: #98989D; font-size: 12px;")
+        self.lbl_status.setProperty("class", "mono")
+        self.lbl_status.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px;")
         s_layout.addWidget(self.lbl_status)
 
         layout.addWidget(search_card)
@@ -59,12 +61,13 @@ class ResearchView(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Left: Scraped Competitor Videos Table
-        vid_card = GlassCard()
+        vid_card = GlassCard(radius=8)
         v_layout = QVBoxLayout(vid_card)
         v_layout.setContentsMargins(14, 14, 14, 14)
         v_layout.setSpacing(8)
-        lbl_v = QLabel("Top Videos in This Niche")
-        lbl_v.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 14px;")
+        lbl_v = QLabel("TOP NICHE VIDEOS")
+        lbl_v.setProperty("class", "eyebrow")
+        lbl_v.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         v_layout.addWidget(lbl_v)
 
         self.table_videos = QTableWidget(0, 3)
@@ -77,40 +80,42 @@ class ResearchView(QWidget):
         splitter.addWidget(vid_card)
 
         # Middle: Audience Comment Breakdown (Confusion / Complaints / Gaps)
-        ins_card = GlassCard()
+        ins_card = GlassCard(radius=8)
         i_layout = QVBoxLayout(ins_card)
         i_layout.setContentsMargins(14, 14, 14, 14)
         i_layout.setSpacing(6)
-        lbl_i = QLabel("What Viewers Are Asking")
-        lbl_i.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 14px;")
+        lbl_i = QLabel("AUDIENCE QUESTIONS & GAPS")
+        lbl_i.setProperty("class", "eyebrow")
+        lbl_i.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         i_layout.addWidget(lbl_i)
 
-        lbl_c1 = QLabel("❓ Common Questions:")
-        lbl_c1.setStyleSheet("color: #98989D; font-size: 12px; font-weight: 600;")
+        lbl_c1 = QLabel("Common Questions:")
+        lbl_c1.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; font-weight: 500;")
         i_layout.addWidget(lbl_c1)
         self.list_confusion = QListWidget()
         i_layout.addWidget(self.list_confusion, stretch=1)
 
-        lbl_c2 = QLabel("⚠️ Viewer Frustrations:")
-        lbl_c2.setStyleSheet("color: #98989D; font-size: 12px; font-weight: 600;")
+        lbl_c2 = QLabel("Viewer Frustrations:")
+        lbl_c2.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; font-weight: 500;")
         i_layout.addWidget(lbl_c2)
         self.list_complaints = QListWidget()
         i_layout.addWidget(self.list_complaints, stretch=1)
 
-        lbl_c3 = QLabel("💡 Untapped Angles:")
-        lbl_c3.setStyleSheet("color: #98989D; font-size: 12px; font-weight: 600;")
+        lbl_c3 = QLabel("Untapped Angles:")
+        lbl_c3.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; font-weight: 500;")
         i_layout.addWidget(lbl_c3)
         self.list_gaps = QListWidget()
         i_layout.addWidget(self.list_gaps, stretch=1)
         splitter.addWidget(ins_card)
 
         # Right: Gemini-Synthesized Viral Video Concepts
-        sug_card = GlassCard()
+        sug_card = GlassCard(radius=8)
         g_layout = QVBoxLayout(sug_card)
         g_layout.setContentsMargins(14, 14, 14, 14)
         g_layout.setSpacing(8)
-        lbl_g = QLabel("Ready-to-Use Video Ideas")
-        lbl_g.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 14px;")
+        lbl_g = QLabel("SYNTHESIZED CONCEPTS")
+        lbl_g.setProperty("class", "eyebrow")
+        lbl_g.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         g_layout.addWidget(lbl_g)
 
         self.list_suggestions = QListWidget()

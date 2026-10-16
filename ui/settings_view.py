@@ -28,39 +28,44 @@ class SettingsView(QWidget):
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(14)
 
-        card = GlassCard()
+        card = GlassCard(radius=8)
         c_layout = QVBoxLayout(card)
         c_layout.setContentsMargins(22, 20, 22, 20)
         c_layout.setSpacing(14)
 
-        lbl_hdr = QLabel("⚙️ Studio & AI Connection Settings")
-        lbl_hdr.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 16px;")
+        lbl_eyebrow = QLabel("CONFIGURATION")
+        lbl_eyebrow.setProperty("class", "eyebrow")
+        lbl_eyebrow.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
+        c_layout.addWidget(lbl_eyebrow)
+
+        lbl_hdr = QLabel("Studio & Model Settings")
+        lbl_hdr.setStyleSheet("color: #f5f5f7; font-weight: 600; font-size: 16px; letter-spacing: -0.01em;")
         c_layout.addWidget(lbl_hdr)
 
         lbl_sub = QLabel(
-            "Connect your Google AI Studio key for cloud generation, or leave as-is to use CrayonStudio's "
-            "free built-in factual writer and 3D diagram renderer."
+            "Connect your Google AI Studio API key for high-volume cloud generation, or use the "
+            "integrated models and fal.ai Wan video generation pipeline."
         )
         lbl_sub.setWordWrap(True)
-        lbl_sub.setStyleSheet("color: #98989D; font-size: 12px;")
+        lbl_sub.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 12px;")
         c_layout.addWidget(lbl_sub)
 
-        c_layout.addWidget(QLabel("Gemini API Key (Google AI Studio):"))
+        c_layout.addWidget(QLabel("Google AI Studio Key:"))
         self.input_api_key = QLineEdit()
         self.input_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.input_api_key.setPlaceholderText("AIzaSy...")
         c_layout.addWidget(self.input_api_key)
 
-        c_layout.addWidget(QLabel("Scene Artwork Model (9:16 Keyframes):"))
+        c_layout.addWidget(QLabel("Keyframe Illustration Model:"))
         self.combo_image_model = QComboBox()
-        self.combo_image_model.addItem("Nano Banana 2.1 (Recommended High-Detail Artwork)", "gemini-nano-banana-2.1")
-        self.combo_image_model.addItem("Gemini 3.1 Flash-Lite Image (Ultra-Fast Drafts)", "gemini-3.1-flash-lite-image")
+        self.combo_image_model.addItem("Nano Banana 2.1 (9:16 High-Precision Keyframes)", "gemini-nano-banana-2.1")
+        self.combo_image_model.addItem("Gemini 3.1 Flash-Lite Image (Fast Drafts)", "gemini-3.1-flash-lite-image")
         c_layout.addWidget(self.combo_image_model)
 
-        c_layout.addWidget(QLabel("AI Video Resolution (Upscaled to 1080x1920 HD):"))
+        c_layout.addWidget(QLabel("Video Output Resolution:"))
         self.combo_omni_res = QComboBox()
-        self.combo_omni_res.addItem("720p -> 1080p Smart Upscale (Saves ~45% Credits)", "720p")
-        self.combo_omni_res.addItem("1080p Native", "1080p")
+        self.combo_omni_res.addItem("720p -> 1080p Lanczos Upscale (Optimized Credit Mode)", "720p")
+        self.combo_omni_res.addItem("1080p Native Master", "1080p")
         c_layout.addWidget(self.combo_omni_res)
 
         row_voice = QHBoxLayout()
@@ -79,13 +84,13 @@ class SettingsView(QWidget):
         row_voice.addLayout(col_v, stretch=2)
 
         col_spd = QVBoxLayout()
-        col_spd.addWidget(QLabel("Speaking Speed:"))
+        col_spd.addWidget(QLabel("Speech Rate:"))
         self.input_voice_speed = QLineEdit("0.96")
         col_spd.addWidget(self.input_voice_speed)
         row_voice.addLayout(col_spd, stretch=1)
         c_layout.addLayout(row_voice)
 
-        c_layout.addWidget(QLabel("FFmpeg Video Encoder Path:"))
+        c_layout.addWidget(QLabel("FFmpeg Encoder Binary:"))
         ff_row = QHBoxLayout()
         self.input_ffmpeg = QLineEdit()
         ff_row.addWidget(self.input_ffmpeg, stretch=1)
@@ -98,10 +103,11 @@ class SettingsView(QWidget):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self.lbl_saved = QLabel("")
-        self.lbl_saved.setStyleSheet("color: #30D158; font-size: 12px; font-weight: 600;")
+        self.lbl_saved.setProperty("class", "mono")
+        self.lbl_saved.setStyleSheet("color: #30D158; font-size: 11px; font-weight: 600;")
         btn_row.addWidget(self.lbl_saved)
 
-        self.btn_save = QPushButton("💾 Save Settings")
+        self.btn_save = QPushButton("Save Settings")
         self.btn_save.setProperty("class", "primary")
         self.btn_save.clicked.connect(self._emit_save)
         btn_row.addWidget(self.btn_save)

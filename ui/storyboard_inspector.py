@@ -16,7 +16,7 @@ class SceneCardWidget(GlassCard):
     delete_requested = Signal(int)
 
     def __init__(self, index: int, scene_data: dict, project_dir: str = "", parent=None):
-        super().__init__(radius=14, elevated=False, parent=parent)
+        super().__init__(radius=8, elevated=False, parent=parent)
         self.index = index
         self.scene_data = dict(scene_data)
         self.project_dir = project_dir
@@ -33,7 +33,7 @@ class SceneCardWidget(GlassCard):
         self.lbl_thumb.setFixedSize(78, 138)
         self.lbl_thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_thumb.setStyleSheet(
-            "background-color: #14161E; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; color: #98989D; font-size: 11px;"
+            "background-color: #0d0f13; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: rgba(255,255,255,0.45); font-size: 11px;"
         )
         layout.addWidget(self.lbl_thumb)
 
@@ -48,8 +48,9 @@ class SceneCardWidget(GlassCard):
         scene_num = int(self.scene_data.get("scene_idx", self.index)) + 1
         start_t = float(self.scene_data.get("start_time", self.scene_data.get("start", 0.0)))
         end_t = float(self.scene_data.get("end_time", self.scene_data.get("end", start_t + 5.0)))
-        lbl_title = QLabel(f"Scene {scene_num}  ({start_t:.0f}s – {end_t:.0f}s)")
-        lbl_title.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 13px; background: transparent;")
+        lbl_title = QLabel(f"Scene {scene_num:02d}  [{start_t:05.2f}s – {end_t:05.2f}s]")
+        lbl_title.setProperty("class", "mono")
+        lbl_title.setStyleSheet("color: #f5f5f7; font-weight: 600; font-size: 12px; background: transparent;")
         header.addWidget(lbl_title)
 
         self.lbl_badge = QLabel()
@@ -59,24 +60,24 @@ class SceneCardWidget(GlassCard):
         header.addStretch()
 
         self.combo_mode = QComboBox()
-        self.combo_mode.addItem("Automatic (Match Studio Mode)", "auto")
-        self.combo_mode.addItem("2.5D Motion Keyframe (Low Cost)", "keyframe")
-        self.combo_mode.addItem("AI Video Clip (Omni 1.1)", "omni_video")
+        self.combo_mode.addItem("Auto (Match Studio Mode)", "auto")
+        self.combo_mode.addItem("2.5D Motion Keyframe", "keyframe")
+        self.combo_mode.addItem("AI Video Clip (Wan)", "omni_video")
         current_mode = self.scene_data.get("render_mode", self.scene_data.get("scene_mode", "auto"))
         idx = self.combo_mode.findData(current_mode)
         if idx >= 0:
             self.combo_mode.setCurrentIndex(idx)
-        self.combo_mode.setFixedWidth(210)
+        self.combo_mode.setFixedWidth(200)
         self.combo_mode.currentIndexChanged.connect(self._on_mode_changed)
         header.addWidget(self.combo_mode)
 
-        self.btn_regen = QPushButton("🔄 Redo This Scene")
+        self.btn_regen = QPushButton("Redo Scene")
         self.btn_regen.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_regen.setToolTip("Redraw just this scene with your updated description")
+        self.btn_regen.setToolTip("Re-render this individual scene with updated prompt")
         self.btn_regen.clicked.connect(self._on_regenerate_clicked)
         header.addWidget(self.btn_regen)
 
-        self.btn_delete = QPushButton("🗑️")
+        self.btn_delete = QPushButton("Remove")
         self.btn_delete.setProperty("class", "chip")
         self.btn_delete.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_delete.setToolTip("Delete this scene")
@@ -87,21 +88,22 @@ class SceneCardWidget(GlassCard):
 
         # What the narrator says
         narration = (self.scene_data.get("script_excerpt") or self.scene_data.get("text") or "").strip()
-        self.lbl_narration = QLabel(f"🗣️ Narrator says: \"{narration}\"")
+        self.lbl_narration = QLabel(f"Narration: \"{narration}\"")
         self.lbl_narration.setWordWrap(True)
-        self.lbl_narration.setStyleSheet("color: #AEAEB2; font-size: 12px; background: transparent;")
+        self.lbl_narration.setStyleSheet("color: #a1a1a6; font-size: 12px; background: transparent;")
         right_col.addWidget(self.lbl_narration)
 
         # What appears on screen (Plain English editable description)
-        lbl_vis_hint = QLabel("🎨 What appears on screen (click to edit):")
-        lbl_vis_hint.setStyleSheet("color: #98989D; font-size: 11px; font-weight: 600; background: transparent;")
+        lbl_vis_hint = QLabel("SCENE ACTION & PROMPT")
+        lbl_vis_hint.setProperty("class", "eyebrow")
+        lbl_vis_hint.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; background: transparent;")
         right_col.addWidget(lbl_vis_hint)
 
         self.txt_prompt = QPlainTextEdit()
         display_prompt = self.scene_data.get("action_desc") or self.scene_data.get("prompt", "")
         self.txt_prompt.setPlainText(display_prompt)
-        self.txt_prompt.setFixedHeight(52)
-        self.txt_prompt.setPlaceholderText("Describe what you want to see in this scene in plain English...")
+        self.txt_prompt.setFixedHeight(50)
+        self.txt_prompt.setPlaceholderText("Describe visual action and camera movement...")
         self.txt_prompt.textChanged.connect(self._on_prompt_changed)
         right_col.addWidget(self.txt_prompt)
 
@@ -110,16 +112,17 @@ class SceneCardWidget(GlassCard):
     def _update_badge(self):
         has_hash = bool(self.scene_data.get("scene_hash"))
         eff_mode = self.scene_data.get("effective_mode", "keyframe")
+        self.lbl_badge.setProperty("class", "mono")
         if has_hash:
-            label = "AI Video" if eff_mode == "omni_video" else "Motion Scene"
-            self.lbl_badge.setText(f"✓ Ready ({label})")
+            label = "AI Video" if eff_mode == "omni_video" else "Keyframe"
+            self.lbl_badge.setText(f"Ready ({label})")
             self.lbl_badge.setStyleSheet(
-                "background-color: rgba(48, 209, 88, 0.16); color: #30D158; border-radius: 8px; padding: 2px 8px; font-size: 11px; font-weight: 600;"
+                "background-color: rgba(48, 209, 88, 0.12); color: #30D158; border: 1px solid rgba(48,209,88,0.28); border-radius: 6px; padding: 2px 7px; font-size: 11px; font-weight: 600;"
             )
         else:
-            self.lbl_badge.setText("Needs Render")
+            self.lbl_badge.setText("Unrendered")
             self.lbl_badge.setStyleSheet(
-                "background-color: rgba(255, 159, 10, 0.16); color: #FF9F0A; border-radius: 8px; padding: 2px 8px; font-size: 11px; font-weight: 600;"
+                "background-color: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.28); border-radius: 6px; padding: 2px 7px; font-size: 11px; font-weight: 600;"
             )
 
     def refresh_thumbnail(self):
@@ -210,36 +213,36 @@ class StoryboardInspectorWidget(QWidget):
         toolbar.setSpacing(8)
 
         self.lbl_summary = QLabel("Scenes will appear here automatically once your script is written.")
-        self.lbl_summary.setStyleSheet("color: #98989D; font-size: 12px; background: transparent;")
+        self.lbl_summary.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 12px; background: transparent;")
         toolbar.addWidget(self.lbl_summary)
 
         toolbar.addStretch()
 
-        self.btn_add_scene = QPushButton("➕ Add Scene")
+        self.btn_add_scene = QPushButton("Add Scene")
         self.btn_add_scene.setProperty("class", "chip")
         self.btn_add_scene.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_add_scene.clicked.connect(self._add_empty_scene)
         toolbar.addWidget(self.btn_add_scene)
 
-        self.btn_auto_segment = QPushButton("✨ Refresh Scenes from Script")
+        self.btn_auto_segment = QPushButton("Sync from Script")
         self.btn_auto_segment.setProperty("class", "chip")
         self.btn_auto_segment.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_auto_segment.clicked.connect(self.auto_segment_requested.emit)
         toolbar.addWidget(self.btn_auto_segment)
 
-        self.btn_copy_prompts = QPushButton("📋 Copy Descriptions")
+        self.btn_copy_prompts = QPushButton("Copy Prompts")
         self.btn_copy_prompts.setProperty("class", "chip")
         self.btn_copy_prompts.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_copy_prompts.clicked.connect(self.copy_prompts_requested.emit)
         toolbar.addWidget(self.btn_copy_prompts)
 
-        self.btn_import_clips = QPushButton("📂 Use My Own Clips")
+        self.btn_import_clips = QPushButton("Import Clips")
         self.btn_import_clips.setProperty("class", "chip")
         self.btn_import_clips.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_import_clips.clicked.connect(self.import_clips_requested.emit)
         toolbar.addWidget(self.btn_import_clips)
 
-        self.btn_clear_scenes = QPushButton("🗑️ Clear All Scenes")
+        self.btn_clear_scenes = QPushButton("Clear All")
         self.btn_clear_scenes.setProperty("class", "chip")
         self.btn_clear_scenes.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_clear_scenes.setToolTip("Remove all scene cards and reset preview canvas")

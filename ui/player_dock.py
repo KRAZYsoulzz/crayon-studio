@@ -241,22 +241,23 @@ class PlayerInspectorDock(GlassCard):
 
         # Header + View Mode Switch + Reset Preview
         header = QHBoxLayout()
-        lbl_hdr = QLabel("Phone Preview (9:16)")
-        lbl_hdr.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 13px; background: transparent;")
+        lbl_hdr = QLabel("PREVIEW & EXPORT (9:16)")
+        lbl_hdr.setProperty("class", "eyebrow")
+        lbl_hdr.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         header.addWidget(lbl_hdr)
         header.addStretch()
 
-        self.btn_mode_canvas = QPushButton("🖼️ Scenes")
+        self.btn_mode_canvas = QPushButton("Scenes")
         self.btn_mode_canvas.setProperty("class", "chip")
         self.btn_mode_canvas.clicked.connect(lambda: self.preview_stack.setCurrentIndex(0))
         header.addWidget(self.btn_mode_canvas)
 
-        self.btn_mode_video = QPushButton("🎬 Final MP4")
+        self.btn_mode_video = QPushButton("Video")
         self.btn_mode_video.setProperty("class", "chip")
         self.btn_mode_video.clicked.connect(lambda: self.preview_stack.setCurrentIndex(1))
         header.addWidget(self.btn_mode_video)
 
-        self.btn_reset_preview = QPushButton("🗑️")
+        self.btn_reset_preview = QPushButton("Reset")
         self.btn_reset_preview.setProperty("class", "chip")
         self.btn_reset_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_reset_preview.setToolTip("Reset preview canvas & clear loaded video")
@@ -283,8 +284,8 @@ class PlayerInspectorDock(GlassCard):
 
         # Minimal Transport Bar
         transport = QHBoxLayout()
-        self.btn_play = QPushButton("▶ Play")
-        self.btn_play.setFixedWidth(74)
+        self.btn_play = QPushButton("Play")
+        self.btn_play.setFixedWidth(64)
         self.btn_play.clicked.connect(self.toggle_playback)
         transport.addWidget(self.btn_play)
 
@@ -293,24 +294,27 @@ class PlayerInspectorDock(GlassCard):
         self.slider_seek.sliderMoved.connect(self._on_slider_moved)
         transport.addWidget(self.slider_seek, stretch=1)
 
-        self.lbl_time = QLabel("00:00 / 00:45")
-        self.lbl_time.setStyleSheet("color: #98989D; font-size: 11px; background: transparent;")
+        self.lbl_time = QLabel("00:00.00 / 00:45.00")
+        self.lbl_time.setProperty("class", "mono")
+        self.lbl_time.setStyleSheet("color: #c7c7cc; font-size: 11px; background: transparent;")
         transport.addWidget(self.lbl_time)
         layout.addLayout(transport)
 
         # Clean Quick Visual Tweak & Quality Check Card
-        critic_card = GlassCard(radius=12)
+        critic_card = GlassCard(radius=8)
         critic_layout = QVBoxLayout(critic_card)
         critic_layout.setContentsMargins(10, 8, 10, 8)
         critic_layout.setSpacing(6)
 
         critic_hdr = QHBoxLayout()
-        lbl_critic_title = QLabel("Quick Visual Tweak & Quality Check")
-        lbl_critic_title.setStyleSheet("color: #F5F5F7; font-weight: 600; font-size: 12px; background: transparent;")
+        lbl_critic_title = QLabel("VISUAL CRITIQUE & TWEAKS")
+        lbl_critic_title.setProperty("class", "eyebrow")
+        lbl_critic_title.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         critic_hdr.addWidget(lbl_critic_title)
         critic_hdr.addStretch()
         self.lbl_critic_status = QLabel("Standby")
-        self.lbl_critic_status.setStyleSheet("color: #98989D; font-size: 11px; background: transparent;")
+        self.lbl_critic_status.setProperty("class", "mono")
+        self.lbl_critic_status.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; background: transparent;")
         critic_hdr.addWidget(self.lbl_critic_status)
         critic_layout.addLayout(critic_hdr)
 
@@ -322,7 +326,7 @@ class PlayerInspectorDock(GlassCard):
             lbl.setFixedSize(72, 88)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(
-                "background-color: #14161E; border: 1px solid rgba(255,255,255,0.10); border-radius: 8px; color: #98989D; font-size: 10px;"
+                "background-color: #0d0f13; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: rgba(255,255,255,0.45); font-size: 10px;"
             )
             thumbs_row.addWidget(lbl)
             self.critic_thumbs.append(lbl)
@@ -330,7 +334,7 @@ class PlayerInspectorDock(GlassCard):
 
         rev_row = QHBoxLayout()
         self.input_visual_revision = QLineEdit()
-        self.input_visual_revision.setPlaceholderText("Want to change a scene? (e.g., 'Scene 1: zoom closer')...")
+        self.input_visual_revision.setPlaceholderText("Direct scene visual tweak (e.g. 'Scene 1: tighter camera zoom')...")
         self.input_visual_revision.returnPressed.connect(self._emit_visual_revision)
         rev_row.addWidget(self.input_visual_revision, stretch=1)
 
@@ -344,19 +348,19 @@ class PlayerInspectorDock(GlassCard):
         # Bottom Sub-Tabs: Save & Captions | Quality Checklist
         self.sub_tabs = QTabWidget()
 
-        # Tab 1: Save Video & Social Captions (Primary for everyday users)
+        # Tab 1: Save Video & Social Captions
         meta_tab = QWidget()
         meta_layout = QVBoxLayout(meta_tab)
         meta_layout.setContentsMargins(10, 8, 10, 8)
         meta_layout.setSpacing(6)
 
         self.meta_title = QLineEdit()
-        self.meta_title.setPlaceholderText("Video Title (click 'Auto-Fill' to generate)...")
+        self.meta_title.setPlaceholderText("Video Title (click 'Generate Metadata' below)...")
         self.meta_title.textChanged.connect(lambda _: self.metadata_changed.emit())
         meta_layout.addWidget(self.meta_title)
 
         self.meta_description = QPlainTextEdit()
-        self.meta_description.setPlaceholderText("Short video caption / description...")
+        self.meta_description.setPlaceholderText("Video description & captions...")
         self.meta_description.setFixedHeight(44)
         self.meta_description.textChanged.connect(self.metadata_changed.emit)
         meta_layout.addWidget(self.meta_description)
@@ -367,35 +371,35 @@ class PlayerInspectorDock(GlassCard):
         meta_layout.addWidget(self.meta_hashtags)
 
         btn_row1 = QHBoxLayout()
-        self.btn_autofill_meta = QPushButton("✨ Auto-Fill Captions")
+        self.btn_autofill_meta = QPushButton("Generate Metadata")
         self.btn_autofill_meta.setProperty("class", "chip")
         self.btn_autofill_meta.clicked.connect(self.autofill_metadata_requested.emit)
         btn_row1.addWidget(self.btn_autofill_meta)
 
-        self.btn_copy_meta = QPushButton("📋 Copy Info")
+        self.btn_copy_meta = QPushButton("Copy Info")
         self.btn_copy_meta.setProperty("class", "chip")
         self.btn_copy_meta.clicked.connect(self._copy_meta_to_clipboard)
         btn_row1.addWidget(self.btn_copy_meta)
 
-        self.btn_save_calendar = QPushButton("📅 Calendar")
+        self.btn_save_calendar = QPushButton("Calendar")
         self.btn_save_calendar.setProperty("class", "chip")
         self.btn_save_calendar.clicked.connect(self.save_calendar_requested.emit)
         btn_row1.addWidget(self.btn_save_calendar)
         meta_layout.addLayout(btn_row1)
 
         btn_row2 = QHBoxLayout()
-        self.btn_export_mp4 = QPushButton("💾 Save Video (.MP4)")
+        self.btn_export_mp4 = QPushButton("Export Video (.MP4)")
         self.btn_export_mp4.setProperty("class", "success")
         self.btn_export_mp4.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_export_mp4.clicked.connect(self.export_mp4_requested.emit)
         btn_row2.addWidget(self.btn_export_mp4, stretch=2)
 
-        self.btn_dispatch = QPushButton("🚀 Publish")
+        self.btn_dispatch = QPushButton("Publish")
         self.btn_dispatch.clicked.connect(self.dispatch_webhook_requested.emit)
         btn_row2.addWidget(self.btn_dispatch, stretch=1)
         meta_layout.addLayout(btn_row2)
 
-        self.sub_tabs.addTab(meta_tab, "💾 Save && Captions")
+        self.sub_tabs.addTab(meta_tab, "Captions && Export")
 
         # Tab 2: Viral Quality Checklist
         ret_tab = QWidget()
@@ -404,17 +408,20 @@ class PlayerInspectorDock(GlassCard):
         ret_layout.setSpacing(4)
 
         score_row = QHBoxLayout()
-        score_row.addWidget(QLabel("Quality Score:"))
+        lbl_sc = QLabel("QUALITY SCORE")
+        lbl_sc.setProperty("class", "eyebrow")
+        score_row.addWidget(lbl_sc)
         score_row.addStretch()
         self.lbl_retention_score = QLabel("100% Ready")
-        self.lbl_retention_score.setStyleSheet("color: #30D158; font-weight: 700;")
+        self.lbl_retention_score.setProperty("class", "mono")
+        self.lbl_retention_score.setStyleSheet("color: #30D158; font-weight: 600;")
         score_row.addWidget(self.lbl_retention_score)
         ret_layout.addLayout(score_row)
 
         self.chk_ret_hook = QCheckBox("Strong Opening Hook (First 3 Seconds)")
         self.chk_ret_loop = QCheckBox("Smooth Loop Ending into Opening Line")
         self.chk_ret_pacing = QCheckBox("Clear Voiceover + Word-Synced Captions")
-        self.chk_ret_visual = QCheckBox("All 4 Scene Keyframes Verified")
+        self.chk_ret_visual = QCheckBox("All Scene Keyframes Verified")
         self.chk_ret_bridge = QCheckBox("Focused Story Flow")
         for chk in (
             self.chk_ret_hook,
@@ -427,7 +434,7 @@ class PlayerInspectorDock(GlassCard):
             chk.stateChanged.connect(self.update_retention_score)
             ret_layout.addWidget(chk)
 
-        self.sub_tabs.addTab(ret_tab, "✓ Quality Check")
+        self.sub_tabs.addTab(ret_tab, "Quality Check")
         layout.addWidget(self.sub_tabs, stretch=2)
 
     def _copy_meta_to_clipboard(self):
@@ -499,9 +506,14 @@ class PlayerInspectorDock(GlassCard):
         self.slider_seek.setValue(pos_ms)
         self.slider_seek.blockSignals(False)
         self.live_canvas.set_time(pos_ms / 1000.0)
-        dur_s = max(1, self.media_player.duration() // 1000)
-        cur_s = pos_ms // 1000
-        self.lbl_time.setText(f"{cur_s // 60:02d}:{cur_s % 60:02d} / {dur_s // 60:02d}:{dur_s % 60:02d}")
+        dur_ms = max(1000, self.media_player.duration() if self.media_player.duration() > 0 else 45000)
+        cur_sec = pos_ms / 1000.0
+        dur_sec = dur_ms / 1000.0
+        cur_m, cur_s = divmod(int(cur_sec), 60)
+        dur_m, dur_s = divmod(int(dur_sec), 60)
+        cur_cs = int((cur_sec - int(cur_sec)) * 100)
+        dur_cs = int((dur_sec - int(dur_sec)) * 100)
+        self.lbl_time.setText(f"{cur_m:02d}:{cur_s:02d}.{cur_cs:02d} / {dur_m:02d}:{dur_s:02d}.{dur_cs:02d}")
 
     def _on_duration_changed(self, dur_ms: int):
         if dur_ms > 0:
@@ -511,9 +523,14 @@ class PlayerInspectorDock(GlassCard):
         self.live_canvas.set_time(pos_ms / 1000.0)
         if self.current_video_path:
             self.media_player.setPosition(pos_ms)
-        dur_s = max(1, self.slider_seek.maximum() // 1000)
-        cur_s = pos_ms // 1000
-        self.lbl_time.setText(f"{cur_s // 60:02d}:{cur_s % 60:02d} / {dur_s // 60:02d}:{dur_s % 60:02d}")
+        dur_ms = max(1000, self.slider_seek.maximum())
+        cur_sec = pos_ms / 1000.0
+        dur_sec = dur_ms / 1000.0
+        cur_m, cur_s = divmod(int(cur_sec), 60)
+        dur_m, dur_s = divmod(int(dur_sec), 60)
+        cur_cs = int((cur_sec - int(cur_sec)) * 100)
+        dur_cs = int((dur_sec - int(dur_sec)) * 100)
+        self.lbl_time.setText(f"{cur_m:02d}:{cur_s:02d}.{cur_cs:02d} / {dur_m:02d}:{dur_s:02d}.{dur_cs:02d}")
 
     def clear_preview(self):
         try:

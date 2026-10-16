@@ -92,19 +92,20 @@ class StudioView(QWidget):
         top_layout.setSpacing(10)
 
         # --- STEP 1 CARD: Pick Your Topic & Visual Look ---
-        self.card_step1 = GlassCard(radius=16)
+        self.card_step1 = GlassCard(radius=8)
         s1_layout = QVBoxLayout(self.card_step1)
         s1_layout.setContentsMargins(16, 14, 16, 14)
         s1_layout.setSpacing(10)
 
         # Topic Header + Input
         topic_hdr = QHBoxLayout()
-        lbl_step1 = QLabel("Step 1 — What would you like to make a video about?")
-        lbl_step1.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 14px; background: transparent;")
+        lbl_step1 = QLabel("TOPIC & CONCEPT")
+        lbl_step1.setProperty("class", "eyebrow")
+        lbl_step1.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         topic_hdr.addWidget(lbl_step1)
         topic_hdr.addStretch()
 
-        self.btn_extras_toggle = QPushButton("Optional Extras ▸")
+        self.btn_extras_toggle = QPushButton("Options ▸")
         self.btn_extras_toggle.setProperty("class", "chip")
         self.btn_extras_toggle.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_extras_toggle.clicked.connect(self._toggle_extras)
@@ -114,12 +115,12 @@ class StudioView(QWidget):
         topic_input_row = QHBoxLayout()
         topic_input_row.setSpacing(10)
         self.input_title = QLineEdit()
-        self.input_title.setPlaceholderText("Type any topic (e.g., How Sand Turns to Glass, Why Bridges Don't Collapse)...")
-        self.input_title.setStyleSheet("font-size: 14px; padding: 9px 14px;")
+        self.input_title.setPlaceholderText("Enter topic (e.g., How Sand Turns to Glass, Why Bridges Don't Collapse)...")
+        self.input_title.setStyleSheet("font-size: 13px; padding: 8px 12px;")
         self.input_title.textChanged.connect(self._on_any_change)
         topic_input_row.addWidget(self.input_title, stretch=1)
 
-        self.btn_generate_script = QPushButton("✨ Write My Script")
+        self.btn_generate_script = QPushButton("Write Script")
         self.btn_generate_script.setProperty("class", "primary")
         self.btn_generate_script.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_generate_script.clicked.connect(self.generate_script_requested.emit)
@@ -129,8 +130,8 @@ class StudioView(QWidget):
         # Instant 1-Click Idea Suggestion Pills
         ideas_row = QHBoxLayout()
         ideas_row.setSpacing(6)
-        lbl_ideas = QLabel("💡 Need an idea? Click one:")
-        lbl_ideas.setStyleSheet("color: #98989D; font-size: 12px; font-weight: 600; background: transparent;")
+        lbl_ideas = QLabel("Suggestions:")
+        lbl_ideas.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; font-weight: 500; background: transparent;")
         ideas_row.addWidget(lbl_ideas)
 
         self.idea_chip_buttons: list[QPushButton] = []
@@ -144,13 +145,13 @@ class StudioView(QWidget):
 
         ideas_row.addStretch()
 
-        self.btn_more_ideas = QPushButton("🔄 More Ideas")
+        self.btn_more_ideas = QPushButton("Cycle Ideas")
         self.btn_more_ideas.setProperty("class", "chip")
         self.btn_more_ideas.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_more_ideas.clicked.connect(self._cycle_idea_bank)
         ideas_row.addWidget(self.btn_more_ideas)
 
-        self.btn_find_trends = QPushButton("🔍 Search Trending")
+        self.btn_find_trends = QPushButton("Topic Finder")
         self.btn_find_trends.setProperty("class", "chip")
         self.btn_find_trends.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_find_trends.clicked.connect(self.open_research_requested.emit)
@@ -166,16 +167,17 @@ class StudioView(QWidget):
         # Left Group: Choose Visual Style
         style_col = QVBoxLayout()
         style_col.setSpacing(6)
-        lbl_vis = QLabel("Choose a Visual Look:")
-        lbl_vis.setStyleSheet("color: #98989D; font-size: 12px; font-weight: 600; background: transparent;")
+        lbl_vis = QLabel("VISUAL STYLE")
+        lbl_vis.setProperty("class", "eyebrow")
+        lbl_vis.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         style_col.addWidget(lbl_vis)
 
         style_cards_h = QHBoxLayout()
         style_cards_h.setSpacing(8)
         style_defs = [
-            ("3D_Pixar", "🎬 3D Cutaway", "Pixar & Zack D. Films style cross-section", "Popular"),
-            ("3D_Teardown", "🔩 3D X-Ray Teardown", "Exploded mechanical & engineering view", ""),
-            ("2D_Kurzgesagt", "🎨 Illustrated Book", "Colorful 2D Kurzgesagt style art", ""),
+            ("3D_Pixar", "3D Cutaway", "Pixar & Zack D. Films style cross-section", "Standard"),
+            ("3D_Teardown", "3D Teardown", "Exploded mechanical and engineering view", ""),
+            ("2D_Kurzgesagt", "Illustrated", "Clean vector infographics & scientific art", ""),
         ]
         for key, title, desc, badge in style_defs:
             sc = SelectableStyleCard(key, title, desc, badge, selected=(key == "3D_Pixar"))
@@ -188,16 +190,17 @@ class StudioView(QWidget):
         # Right Group: Choose Quality & Cost Mode
         mode_col = QVBoxLayout()
         mode_col.setSpacing(6)
-        lbl_mod = QLabel("Choose Quality & Credit Mode:")
-        lbl_mod.setStyleSheet("color: #98989D; font-size: 12px; font-weight: 600; background: transparent;")
+        lbl_mod = QLabel("RENDER PIPELINE")
+        lbl_mod.setProperty("class", "eyebrow")
+        lbl_mod.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         mode_col.addWidget(lbl_mod)
 
         mode_cards_h = QHBoxLayout()
         mode_cards_h.setSpacing(8)
         mode_defs = [
-            ("full_omni", "🎥 Full AI Video", "Every scene rendered as AI video (Wan)", "Max Motion"),
-            ("smart_hybrid", "⚡ Smart Hybrid", "AI video hook + 2.5D motion scenes", "Balanced"),
-            ("keyframe_only", "🖼️ Motion Keyframes", "Fastest & lowest credit use", "Low Cost"),
+            ("full_omni", "AI Video Clips", "Every scene generated as motion video (Wan)", "Maximum"),
+            ("smart_hybrid", "Smart Hybrid", "AI video hook with 2.5D motion keyframes", "Balanced"),
+            ("keyframe_only", "Keyframe Motion", "High-speed keyframes with Ken Burns camera", "Fast Draft"),
         ]
         for key, title, desc, badge in mode_defs:
             mc = SelectableStyleCard(key, title, desc, badge, selected=(key == "smart_hybrid"))
@@ -273,24 +276,27 @@ class StudioView(QWidget):
         top_layout.addWidget(self.card_step1)
 
         # --- STEP 2 CARD: Review & Polish Your Script ---
-        self.card_step2 = GlassCard(radius=16)
+        self.card_step2 = GlassCard(radius=8)
         s2_layout = QVBoxLayout(self.card_step2)
         s2_layout.setContentsMargins(16, 12, 16, 12)
         s2_layout.setSpacing(8)
 
         s2_header = QHBoxLayout()
-        lbl_step2 = QLabel("Step 2 — Review & Polish Your Script")
-        lbl_step2.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 14px; background: transparent;")
+        lbl_step2 = QLabel("SCRIPT & PACING")
+        lbl_step2.setProperty("class", "eyebrow")
+        lbl_step2.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         s2_header.addWidget(lbl_step2)
 
-        self.lbl_word_stats = QLabel("~0 seconds  •  0 words")
+        self.lbl_word_stats = QLabel("00:00.00  •  0 words")
+        self.lbl_word_stats.setProperty("class", "mono")
         self.lbl_word_stats.setStyleSheet(
-            "background-color: rgba(255,255,255,0.07); color: #98989D; border-radius: 10px; padding: 3px 10px; font-size: 11.5px; font-weight: 600;"
+            "background-color: rgba(255,255,255,0.05); color: #c7c7cc; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
         )
         s2_header.addWidget(self.lbl_word_stats)
         s2_header.addStretch()
 
-        self.btn_save = QPushButton("💾 Save Progress")
+        self.btn_save = QPushButton("Save Draft")
+        self.btn_save.setProperty("class", "chip")
         self.btn_save.clicked.connect(self.save_project_requested.emit)
         s2_header.addWidget(self.btn_save)
         s2_layout.addLayout(s2_header)
@@ -299,7 +305,7 @@ class StudioView(QWidget):
         self.txt_script.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.txt_script.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         self.txt_script.setPlaceholderText(
-            "Click '✨ Write My Script' above (or type your own script here). We'll automatically turn it into voiceover and visual scenes!"
+            "Click 'Write Script' above or enter custom narration here. Generated script automatically turns into timed voiceover and scenes."
         )
         self.txt_script.setMinimumHeight(110)
         self.txt_script.setMaximumHeight(220)
@@ -307,19 +313,19 @@ class StudioView(QWidget):
         self.txt_script.textChanged.connect(self._on_duration_or_script_changed)
         s2_layout.addWidget(self.txt_script)
 
-        # 1-Click Quick-Polish Chips + Plain-English Revision Input
+        # Quick Polish Chips + Plain-English Revision Input
         polish_row = QHBoxLayout()
         polish_row.setSpacing(6)
         lbl_pol = QLabel("Quick Polish:")
-        lbl_pol.setStyleSheet("color: #98989D; font-size: 11.5px; font-weight: 600; background: transparent;")
+        lbl_pol.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11px; font-weight: 500; background: transparent;")
         polish_row.addWidget(lbl_pol)
 
         quick_prompts = [
-            ("✨ Make Opening More Exciting", "Make the opening hook more exciting and curiosity-inducing."),
-            ("🧒 Explain More Simply", "Explain the mechanism in simpler, everyday conversational language."),
-            ("⏱️ Expand to 61-70s (TikTok Monetization)", "Expand the explanation with fascinating scientific/engineering details so the script reaches 61 to 70 seconds (~150 words) to qualify for TikTok Creator Rewards monetization."),
-            ("⚡ Make It Shorter", "Shorten and tighten the pacing so it is punchier."),
-            ("🔄 Fresh Rewrite", "Stop referring to the video name and rewrite cleanly as a standalone script."),
+            ("Enhance Hook", "Make the opening hook more exciting and curiosity-inducing."),
+            ("Simplify Language", "Explain the mechanism in simpler, everyday conversational language."),
+            ("Extend to 65s", "Expand the explanation with fascinating scientific/engineering details so the script reaches 61 to 70 seconds (~150 words) to qualify for TikTok Creator Rewards monetization."),
+            ("Tighten Pacing", "Shorten and tighten the pacing so it is punchier."),
+            ("Clean Standalone", "Stop referring to the video name and rewrite cleanly as a standalone script."),
         ]
         for btn_label, instruction in quick_prompts:
             q_btn = QPushButton(btn_label)
@@ -335,12 +341,12 @@ class StudioView(QWidget):
         rev_bar.setSpacing(8)
         self.input_ai_prompt = QLineEdit()
         self.input_ai_prompt.setPlaceholderText(
-            "Or tell the writer what to change in plain English (e.g., 'Add a fun fact about lightning melting sand')..."
+            "Direct revision instructions (e.g., 'Add a fun fact about lightning melting quartz sand')..."
         )
         self.input_ai_prompt.returnPressed.connect(self._emit_script_revision)
         rev_bar.addWidget(self.input_ai_prompt, stretch=1)
 
-        self.btn_apply_revision = QPushButton("Apply Change")
+        self.btn_apply_revision = QPushButton("Apply Edit")
         self.btn_apply_revision.clicked.connect(self._emit_script_revision)
         rev_bar.addWidget(self.btn_apply_revision)
         s2_layout.addLayout(rev_bar)
@@ -351,14 +357,15 @@ class StudioView(QWidget):
         # =====================================================================
         # BOTTOM HALF: STEP 3 (VOICE & SCENES) + STEP 4 (CREATE VIDEO)
         # =====================================================================
-        self.card_step3 = GlassCard(radius=16)
+        self.card_step3 = GlassCard(radius=8)
         s3_layout = QVBoxLayout(self.card_step3)
         s3_layout.setContentsMargins(16, 12, 16, 12)
         s3_layout.setSpacing(8)
 
         s3_header = QHBoxLayout()
-        lbl_step3 = QLabel("Step 3 & 4 — Preview Scenes & Create Your Video")
-        lbl_step3.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 14px; background: transparent;")
+        lbl_step3 = QLabel("SCENE BREAKDOWN & PRODUCTION")
+        lbl_step3.setProperty("class", "eyebrow")
+        lbl_step3.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         s3_header.addWidget(lbl_step3)
         s3_header.addStretch()
         s3_layout.addLayout(s3_header)
@@ -370,13 +377,13 @@ class StudioView(QWidget):
         pipe_bar = QHBoxLayout()
         pipe_bar.setSpacing(12)
 
-        self.btn_run_audio = QPushButton("🎙️ Step 3: Build Voiceover && Scenes")
+        self.btn_run_audio = QPushButton("Build Voiceover && Scenes")
         self.btn_run_audio.setProperty("class", "primary")
         self.btn_run_audio.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_run_audio.clicked.connect(self.run_audio_requested.emit)
         pipe_bar.addWidget(self.btn_run_audio)
 
-        self.btn_run_render = QPushButton("🎬 Step 4: Create My Video (Est. $0.00)")
+        self.btn_run_render = QPushButton("Render Final Video (Est. $0.00)")
         self.btn_run_render.setProperty("class", "success")
         self.btn_run_render.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_run_render.clicked.connect(self.run_render_requested.emit)
@@ -389,7 +396,7 @@ class StudioView(QWidget):
         pipe_bar.addWidget(self.progress_bar)
 
         self.lbl_pipeline_status = QLabel("Ready — Pick a topic in Step 1 to begin.")
-        self.lbl_pipeline_status.setStyleSheet("color: #98989D; font-size: 12px; background: transparent;")
+        self.lbl_pipeline_status.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 12px; background: transparent;")
         pipe_bar.addWidget(self.lbl_pipeline_status, stretch=1)
 
         s3_layout.addLayout(pipe_bar)
@@ -488,7 +495,7 @@ class StudioView(QWidget):
             est = tracker.estimate_render_cost(scenes, mode_key, image_model, omni_res)
             card.set_badge(est.get("badge", ""))
             if mode_key == current_mode:
-                self.btn_run_render.setText(f"🎬 Step 4: Create My Video ({est.get('badge', 'Est. $0.00')})")
+                self.btn_run_render.setText(f"Render Final Video ({est.get('badge', 'Est. $0.00')})")
                 self.btn_run_render.setToolTip(est.get("summary", ""))
 
     def _pick_style_ref(self):
@@ -505,10 +512,10 @@ class StudioView(QWidget):
     def set_style_reference_path(self, path: str):
         self.style_reference_path = path or ""
         if self.style_reference_path and os.path.exists(self.style_reference_path):
-            self.btn_pick_style_ref.setText(f"📎 {os.path.basename(self.style_reference_path)}")
+            self.btn_pick_style_ref.setText(os.path.basename(self.style_reference_path))
             self.btn_pick_style_ref.setToolTip(self.style_reference_path)
         else:
-            self.btn_pick_style_ref.setText("📎 Custom Style Image...")
+            self.btn_pick_style_ref.setText("Style Reference...")
             self.btn_pick_style_ref.setToolTip("")
 
     def _emit_script_revision(self):
@@ -520,26 +527,28 @@ class StudioView(QWidget):
         words = [w for w in self.txt_script.toPlainText().split() if w.strip()]
         w_count = len(words)
         est_sec = int(round(w_count / 2.35))
+        m, s = divmod(est_sec, 60)
+        timecode = f"{m:02d}:{s:02d}.00"
         if est_sec >= 61 and est_sec <= 75:
-            self.lbl_word_stats.setText(f"~{est_sec}s spoken  •  {w_count} words  •  🟢 TikTok Monetized (61-70s)")
+            self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Monetized (61–70s)")
             self.lbl_word_stats.setStyleSheet(
-                "background-color: rgba(48,209,88,0.15); color: #30D158; border: 1px solid rgba(48,209,88,0.35); border-radius: 10px; padding: 3px 10px; font-size: 11.5px; font-weight: 600;"
+                "background-color: rgba(48,209,88,0.12); color: #30D158; border: 1px solid rgba(48,209,88,0.28); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
             )
         elif est_sec < 61 and w_count > 0:
             shortfall = max(1, 145 - w_count)
-            self.lbl_word_stats.setText(f"~{est_sec}s spoken  •  {w_count} words  •  ⚠️ Under 61s (+{shortfall} words needed for TikTok)")
+            self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Under 61s (+{shortfall}w needed)")
             self.lbl_word_stats.setStyleSheet(
-                "background-color: rgba(255,159,10,0.15); color: #FF9F0A; border: 1px solid rgba(255,159,10,0.35); border-radius: 10px; padding: 3px 10px; font-size: 11.5px; font-weight: 600;"
+                "background-color: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.28); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
             )
         elif est_sec > 75:
-            self.lbl_word_stats.setText(f"~{est_sec}s spoken  •  {w_count} words  •  ℹ️ {est_sec}s (Target: 61-70s)")
+            self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Longer than 75s")
             self.lbl_word_stats.setStyleSheet(
-                "background-color: rgba(255,255,255,0.07); color: #98989D; border-radius: 10px; padding: 3px 10px; font-size: 11.5px; font-weight: 600;"
+                "background-color: rgba(255,255,255,0.05); color: #c7c7cc; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
             )
         else:
-            self.lbl_word_stats.setText("~0 seconds  •  0 words  •  Target: 61-70s for TikTok")
+            self.lbl_word_stats.setText("00:00.00  •  0 words  •  Target: 61–70s")
             self.lbl_word_stats.setStyleSheet(
-                "background-color: rgba(255,255,255,0.07); color: #98989D; border-radius: 10px; padding: 3px 10px; font-size: 11.5px; font-weight: 600;"
+                "background-color: rgba(255,255,255,0.05); color: #c7c7cc; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
             )
         if w_count >= 20 and self.step_bar.current_step == 0:
             self.step_bar.set_step(1)
