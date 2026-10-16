@@ -665,6 +665,7 @@ class AIStoryboardEngine:
                             )
                             with open(output_path, "wb") as f:
                                 f.write(img_bytes)
+                            self._last_image_generated = True
                             with Image.open(output_path) as im:
                                 if im.size != (1080, 1920):
                                     im = im.resize((1080, 1920), Image.Resampling.LANCZOS)
@@ -700,6 +701,62 @@ class AIStoryboardEngine:
             visual_engine=visual_engine,
         )
 
+    def _wan_segment(
+        self,
+        prompt: str,
+        image_path: Optional[str],
+        out_path: str,
+        num_frames: int,
+        fps: int,
+    ) -> bool:
+        """One fal.ai Wan call. Image-to-video when an image is given (keeps the keyframe's style)."""
+        import fal_client
+        import requests
+
+        args: Dict[str, Any] = {
+            "prompt": prompt,
+            "num_frames": num_frames,
+            "frames_per_second": fps,
+            "resolution": self.video_resolution,
+            "aspect_ratio": self.video_aspect_ratio,
+        }
+        endpoint = FAL_WAN_T2V_ENDPOINT
+        if image_path and os.path.exists(image_path):
+            args["image_url"] = fal_client.upload_file(image_path)
+            # fal's default negative prompt contains "style, artwork, painting", which
+            # fights stylized (Pixar/cartoon) keyframes -- override it.
+            args["negative_prompt"] = FAL_WAN_NEGATIVE_PROMPT
+            endpoint = FAL_WAN_I2V_ENDPOINT
+        result = fal_client.subscribe(endpoint, arguments=args)
+        url = (result.get("video") or {}).get("url")
+        if not url:
+            return False
+        resp = requests.get(url, timeout=300)
+        resp.raise_for_status()
+        if len(resp.content) <= 10000:
+            return False
+        os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+        with open(out_path, "wb") as f:
+            f.write(resp.content)
+        return True
+
+    def _chain_wan_segments(self, segments: List[str], out_path: str, total_sec: float) -> bool:
+        """Concatenate Wan segments with FFmpeg and trim to `total_sec`."""
+        list_file = out_path + ".concat.txt"
+        try:
+            with open(list_file, "w", encoding="utf-8") as f:
+                for seg in segments:
+                    f.write(f"file '{os.path.abspath(seg).replace(chr(92), '/')}'\n")
+            cmd = [
+                self.ffmpeg_path, "-y", "-f", "concat", "-safe", "0", "-i", list_file,
+                "-t", f"{total_sec:.2f}", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out_path,
+            ]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            return os.path.exists(out_path) and os.path.getsize(out_path) > 10000
+        finally:
+            if os.path.exists(list_file):
+                os.remove(list_file)
+
     def generate_ai_video_clip(
         self,
         scene_prompt: str,
@@ -712,12 +769,14 @@ class AIStoryboardEngine:
         force_regenerate: bool = False,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> Tuple[bool, Optional[str]]:
-        """Generate a vertical (9:16, TikTok/Reels/Shorts) AI clip via fal.ai Wan text-to-video.
+        """Generate a vertical (9:16, TikTok/Reels/Shorts) AI clip via fal.ai Wan.
 
-        Only the clean scene prompt is sent (no chat history / system prompt). When a keyframe exists it uses
-        Wan image-to-video (keyframe = first frame) so the project style stays consistent; otherwise
-        text-to-video. Last-frame and multi-turn args are accepted but ignored.
-        Wan caps clips at 100 frames (~6s @16fps); the compositor loops/trims as needed.
+        Only the clean scene prompt is sent (no chat history / system prompt). When a keyframe
+        exists it uses Wan image-to-video (keyframe = first frame) so the project style stays
+        consistent; otherwise text-to-video. One Wan call yields <= ~6.25s, so longer clips
+        (up to VIDEO_DURATION, default 10s) chain segments: each next segment starts from the
+        previous segment's last frame, then FFmpeg joins and trims them.
+        Last-frame and multi-turn args are accepted but ignored.
         Duplicate in-flight requests for the same output clip are rejected.
         """
         if not force_regenerate and os.path.exists(output_clip_path) and os.path.getsize(output_clip_path) > 20000:
@@ -736,54 +795,105 @@ class AIStoryboardEngine:
                 return False, previous_interaction_id
             _INFLIGHT_CLIPS.add(key)
 
+        segs: List[str] = []
         try:
-            import fal_client
-            import requests
-
             os.environ.setdefault("FAL_KEY", self.fal_key)
             fps = 16
-            num_frames = max(81, min(100, int(round(max(3.0, duration_sec) * fps))))
-            if progress_callback:
-                progress_callback(
-                    f"[Wan] Generating {num_frames / fps:.1f}s {self.video_resolution} {self.video_aspect_ratio} video..."
-                )
-            args: Dict[str, Any] = {
-                "prompt": scene_prompt.strip()[:950],
-                "num_frames": num_frames,
-                "frames_per_second": fps,
-                "resolution": self.video_resolution,
-                "aspect_ratio": self.video_aspect_ratio,
-            }
-            endpoint = FAL_WAN_T2V_ENDPOINT
-            if start_image_path and os.path.exists(start_image_path):
-                # Image-to-video: animate the styled keyframe so style stays consistent.
-                args["image_url"] = fal_client.upload_file(start_image_path)
-                # fal's default negative prompt contains "style, artwork, painting", which
-                # fights stylized (Pixar/cartoon) keyframes -- override it.
-                args["negative_prompt"] = FAL_WAN_NEGATIVE_PROMPT
-                endpoint = FAL_WAN_I2V_ENDPOINT
-            result = fal_client.subscribe(endpoint, arguments=args)
-            url = (result.get("video") or {}).get("url")
-            if url:
-                resp = requests.get(url, timeout=300)
-                resp.raise_for_status()
-                if len(resp.content) > 10000:
-                    os.makedirs(os.path.dirname(os.path.abspath(output_clip_path)), exist_ok=True)
-                    with open(output_clip_path, "wb") as f:
-                        f.write(resp.content)
-                    if progress_callback:
-                        progress_callback(
-                            f"[OK] [Wan] Saved {len(resp.content) // 1024} KB clip: {os.path.basename(output_clip_path)}"
-                        )
-                    return True, previous_interaction_id
+            max_frames = 100
+            total_sec = max(3.0, min(float(duration_sec), float(self.video_duration)))
+            n_segs = max(1, math.ceil(total_sec / (max_frames / fps)))
+            prompt = scene_prompt.strip()[:950]
+            image = start_image_path
+            for i in range(n_segs):
+                remaining = total_sec - i * (max_frames / fps)
+                frames = max(81, min(max_frames, int(round(remaining * fps))))
+                seg_path = f"{output_clip_path}.seg{i}.mp4"
+                if progress_callback:
+                    progress_callback(
+                        f"[Wan] Segment {i + 1}/{n_segs}: {frames / fps:.1f}s {self.video_resolution} {self.video_aspect_ratio}..."
+                    )
+                if not self._wan_segment(prompt, image, seg_path, frames, fps):
+                    break
+                segs.append(seg_path)
+                if i + 1 < n_segs:
+                    last_png = f"{output_clip_path}.seg{i}_last.png"
+                    subprocess.run(
+                        [self.ffmpeg_path, "-y", "-sseof", "-0.1", "-i", seg_path, "-frames:v", "1", last_png],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+                    )
+                    if not os.path.exists(last_png):
+                        break
+                    segs_last = last_png
+                    image = segs_last
+
+            ok = False
+            if len(segs) == n_segs and n_segs == 1:
+                os.replace(segs[0], output_clip_path)
+                segs = []
+                ok = True
+            elif segs:
+                ok = self._chain_wan_segments(segs, output_clip_path, total_sec)
+            if ok:
+                if progress_callback:
+                    progress_callback(
+                        f"[OK] [Wan] Saved {os.path.getsize(output_clip_path) // 1024} KB clip: {os.path.basename(output_clip_path)}"
+                    )
+                return True, previous_interaction_id
         except Exception as e:
             if progress_callback:
                 progress_callback(f"[Wan] Generation note: {e}")
         finally:
             with _INFLIGHT_LOCK:
                 _INFLIGHT_CLIPS.discard(key)
+            for tmp in segs + [f"{output_clip_path}.seg{i}_last.png" for i in range(4)]:
+                if os.path.exists(tmp):
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
 
         return False, previous_interaction_id
+
+    def ensure_style_reference(
+        self,
+        project_dir: str,
+        script_text: str,
+        visual_engine: str,
+        category: str,
+        style_reference_path: Optional[str],
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> Optional[str]:
+        """Return the user's style reference, or auto-generate (and cache) one for the project.
+
+        The generated `style_reference.png` is passed to every keyframe, which then seeds the
+        Wan clips, so all scenes share one look. Delete the file to regenerate it.
+        """
+        if style_reference_path:
+            return style_reference_path
+        ref_path = os.path.join(project_dir, "style_reference.png")
+        if os.path.exists(ref_path) and os.path.getsize(ref_path) > 10000:
+            return ref_path
+        if not self.gemini_api_key or getattr(self, "_credits_exhausted", False):
+            return None
+        if progress_callback:
+            progress_callback("[Style] Generating project style reference image...")
+        dna = self.STYLE_DNA_PRESETS.get(visual_engine, self.STYLE_DNA_PRESETS["3D_Pixar"])
+        topic = " ".join(script_text.split())[:200]
+        self._last_image_generated = False
+        self.generate_scene_image(
+            prompt=f"Style-guide hero frame for a short educational video about: {topic}. {dna}",
+            output_path=ref_path,
+            category=category,
+            visual_engine=visual_engine,
+            force_regenerate=True,
+            progress_callback=progress_callback,
+        )
+        if self._last_image_generated:
+            return ref_path
+        # Procedural fallback card is not a usable style reference.
+        if os.path.exists(ref_path):
+            os.remove(ref_path)
+        return None
 
     def generate_batched_omni_pair(
         self,
@@ -1063,6 +1173,9 @@ class AIStoryboardEngine:
         sc_img_path = os.path.join(scenes_dir, f"scene_{idx_1based:02d}.png")
         omni_clip_target = os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.mp4")
 
+        cached_ref = os.path.join(project_dir, "style_reference.png")
+        if not style_reference_path and os.path.exists(cached_ref):
+            style_reference_path = cached_ref  # reuse the project's auto-generated style reference
         dna = self.extract_style_dna(style_reference_path, visual_engine=visual_engine, progress_callback=progress_callback)
         effective_mode = self.resolve_effective_scene_mode(
             scene_idx=scene_idx,
@@ -1202,7 +1315,10 @@ class AIStoryboardEngine:
             target_count=6,
         )
 
-        # 3. Extract or resolve Style DNA
+        # 3. Extract or resolve Style DNA (auto-generate a style reference if none was provided)
+        style_reference_path = self.ensure_style_reference(
+            project_dir, script_text, visual_engine, category, style_reference_path, progress_callback
+        )
         style_dna = self.extract_style_dna(
             style_image_path=style_reference_path,
             visual_engine=visual_engine,
