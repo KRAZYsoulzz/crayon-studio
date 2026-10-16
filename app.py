@@ -172,9 +172,9 @@ class CrayonStudioWindow(QMainWindow):
         lbl_m_hdr.setStyleSheet("color: #F5F5F7; font-weight: 700; font-size: 11px;")
         m_layout.addWidget(lbl_m_hdr)
         self.lbl_model_stack = QLabel(
-            "• Writer: Gemini 3.8 Flash\n"
-            "• Art: Nano Banana 2.1\n"
-            "• Video: Omni 1.1 (1080p HD)"
+            "• Writer: Gemini 3.8 Flash (Fallback: 3.6/3.5)\n"
+            "• Art: Nano Banana 2.1 (9:16 Keyframes)\n"
+            "• Video: fal.ai Wan (480p->1080p Lanczos)"
         )
         self.lbl_model_stack.setStyleSheet("color: #98989D; font-size: 11px;")
         m_layout.addWidget(self.lbl_model_stack)
@@ -991,7 +991,7 @@ class CrayonStudioWindow(QMainWindow):
         self.lbl_model_stack.setText(
             f"• Writer: {self.config.get('text_model', 'gemini-3.8-flash')}\n"
             f"• Art: {self.config.get('image_model', 'gemini-nano-banana-2.1')}\n"
-            f"• Video: omni-1.1 ({self.config.get('omni_resolution', '720p')}->1080p)"
+            f"• Video: fal.ai Wan ({os.environ.get('VIDEO_RESOLUTION', '480p')}->1080p HD)"
         )
 
 
