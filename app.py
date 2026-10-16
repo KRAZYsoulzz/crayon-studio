@@ -865,6 +865,8 @@ class CrayonStudioWindow(QMainWindow):
     # WORKFLOW 5: 9:16 RENDERING, LANCZOS UPSCALING & VISUAL CRITIC GATE
     # =========================================================================
     def on_run_render(self, visual_revision_prompt: str = ""):
+        if not self.studio_view.btn_run_render.isEnabled():
+            return  # render already in progress; ignore double-clicks
         state = self.sync_ui_to_project_state(persist_db=True)
         if not state["script_text"].strip():
             QMessageBox.warning(self, "No Script Yet", "Click 'Write My Script' in Step 1 first.")

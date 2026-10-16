@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -35,6 +36,11 @@ logger = logging.getLogger("crayon_studio.storyboard_engine")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+
+
+FAL_WAN_ENDPOINT = "fal-ai/wan-t2v"
+_INFLIGHT_CLIPS: set = set()
+_INFLIGHT_LOCK = threading.Lock()
 
 
 class AIStoryboardEngine:
@@ -83,6 +89,10 @@ class AIStoryboardEngine:
         self.ffmpeg_path = "ffmpeg"
         self.image_model = "gemini-nano-banana-2.1"
         self.omni_resolution = "720p"
+        self.fal_key = os.environ.get("FAL_KEY", "").strip()
+        self.video_duration = int(os.environ.get("VIDEO_DURATION", "10"))
+        self.video_resolution = os.environ.get("VIDEO_RESOLUTION", "720p")
+        self.video_aspect_ratio = os.environ.get("VIDEO_ASPECT_RATIO", "9:16")
 
         if os.path.exists(self.config_path):
             try:
@@ -700,108 +710,69 @@ class AIStoryboardEngine:
         force_regenerate: bool = False,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> Tuple[bool, Optional[str]]:
-        """Generate 9:16 AI video clip via `gemini-omni-1.1-flash` using the Interactions API.
+        """Generate a vertical (9:16, TikTok/Reels/Shorts) AI clip via fal.ai Wan text-to-video.
 
-        Supports:
-        - First-frame conditioning (`start_image_path` -> `<FIRST_FRAME>`)
-        - First-and-last-frame transition (`last_image_path` -> `<FIRST_FRAME> <LAST_FRAME>`)
-        - Multi-turn continuity (`previous_interaction_id`)
-        - Token-efficient `720p` default resolution (upscaled to 1080p during FFmpeg compositing)
+        Only the clean scene prompt is sent (no chat history / system prompt). Wan t2v is
+        text-only, so frame-conditioning and multi-turn args are accepted but ignored.
+        Wan caps clips at 100 frames (~6s @16fps); the compositor loops/trims as needed.
+        Duplicate in-flight requests for the same output clip are rejected.
         """
         if not force_regenerate and os.path.exists(output_clip_path) and os.path.getsize(output_clip_path) > 20000:
             if progress_callback:
-                progress_callback(f"[Cache Hit] Reusing cached Omni video clip: {os.path.basename(output_clip_path)}")
+                progress_callback(f"[Cache Hit] Reusing cached video clip: {os.path.basename(output_clip_path)}")
             return True, previous_interaction_id
 
-        api_key = (gemini_api_key or self.gemini_api_key).strip()
-        if not api_key or getattr(self, "_credits_exhausted", False):
+        if not self.fal_key:
             return False, previous_interaction_id
 
+        key = os.path.abspath(output_clip_path)
+        with _INFLIGHT_LOCK:
+            if key in _INFLIGHT_CLIPS:
+                if progress_callback:
+                    progress_callback(f"[Wan] Already generating {os.path.basename(output_clip_path)}; skipping duplicate.")
+                return False, previous_interaction_id
+            _INFLIGHT_CLIPS.add(key)
+
         try:
-            from google import genai
-            from google.genai import types
+            import fal_client
+            import requests
 
-            client = genai.Client(
-                api_key=api_key,
-                http_options=types.HttpOptions(timeout=600_000),
-            )
-            dur_int = max(3, min(10, int(round(duration_sec))))
-            dur_str = f"{dur_int}s"
-
-            input_parts: List[Dict[str, Any]] = []
-            prompt_text = scene_prompt.strip()
-
-            # Attach first frame and optional last frame (when not chaining from previous_interaction_id)
-            if not previous_interaction_id and start_image_path and os.path.exists(start_image_path):
-                f1_part = self._encode_image_part(start_image_path)
-                if f1_part:
-                    input_parts.append(f1_part)
-                    if last_image_path and os.path.exists(last_image_path):
-                        f2_part = self._encode_image_part(last_image_path)
-                        if f2_part:
-                            input_parts.append(f2_part)
-                            if "<FIRST_FRAME>" not in prompt_text:
-                                prompt_text = f"<FIRST_FRAME> <LAST_FRAME> {prompt_text}"
-                    elif "<FIRST_FRAME>" not in prompt_text:
-                        prompt_text = f"<FIRST_FRAME> {prompt_text}"
-
-            input_parts.append({"type": "text", "text": prompt_text})
-
-            turn_label = f" (Multi-turn from {previous_interaction_id[:12]}...)" if previous_interaction_id else ""
+            os.environ.setdefault("FAL_KEY", self.fal_key)
+            fps = 16
+            num_frames = max(81, min(100, int(round(max(3.0, duration_sec) * fps))))
             if progress_callback:
                 progress_callback(
-                    f"[Omni 1.1 Flash] Generating {dur_str} {self.omni_resolution} 9:16 video{turn_label}..."
+                    f"[Wan] Generating {num_frames / fps:.1f}s {self.video_resolution} {self.video_aspect_ratio} video..."
                 )
-
-            create_kwargs: Dict[str, Any] = {
-                "model": "gemini-omni-1.1-flash",
-                "input": input_parts,
-                "response_format": {
-                    "type": "video",
-                    "aspect_ratio": "9:16",
-                    "duration": dur_str,
-                    "resolution": self.omni_resolution,
-                    "delivery": "uri",
+            result = fal_client.subscribe(
+                FAL_WAN_ENDPOINT,
+                arguments={
+                    "prompt": scene_prompt.strip()[:950],
+                    "num_frames": num_frames,
+                    "frames_per_second": fps,
+                    "resolution": self.video_resolution,
+                    "aspect_ratio": self.video_aspect_ratio,
                 },
-            }
-            if previous_interaction_id:
-                create_kwargs["previous_interaction_id"] = previous_interaction_id
-
-            inter = client.interactions.create(**create_kwargs)
-            video_bytes = None
-            out_vid = getattr(inter, "output_video", None)
-            if out_vid:
-                if getattr(out_vid, "data", None):
-                    d = out_vid.data
-                    video_bytes = base64.b64decode(d) if isinstance(d, str) else d
-                elif getattr(out_vid, "uri", None):
-                    video_bytes = client.files.download(file=out_vid.uri)
-
-            if video_bytes and len(video_bytes) > 10000:
-                from core.usage_tracker import usage_tracker
-
-                usage_tracker.record_interaction(
-                    "gemini-omni-1.1-flash",
-                    "omni_video_clip",
-                    inter,
-                    video_seconds=float(dur_int),
-                )
-                os.makedirs(os.path.dirname(os.path.abspath(output_clip_path)), exist_ok=True)
-                with open(output_clip_path, "wb") as f:
-                    f.write(video_bytes)
-                if progress_callback:
-                    progress_callback(
-                        f"[OK] [Omni 1.1 Flash] Saved {len(video_bytes) // 1024} KB clip: {os.path.basename(output_clip_path)}"
-                    )
-                return True, getattr(inter, "id", None)
+            )
+            url = (result.get("video") or {}).get("url")
+            if url:
+                resp = requests.get(url, timeout=300)
+                resp.raise_for_status()
+                if len(resp.content) > 10000:
+                    os.makedirs(os.path.dirname(os.path.abspath(output_clip_path)), exist_ok=True)
+                    with open(output_clip_path, "wb") as f:
+                        f.write(resp.content)
+                    if progress_callback:
+                        progress_callback(
+                            f"[OK] [Wan] Saved {len(resp.content) // 1024} KB clip: {os.path.basename(output_clip_path)}"
+                        )
+                    return True, previous_interaction_id
         except Exception as e:
-            from core.usage_tracker import usage_tracker
-
-            usage_tracker.record_error("gemini-omni-1.1-flash", "omni_video_clip", e)
-            if "402" in str(e) or "prepayment credits are depleted" in str(e).lower():
-                self._credits_exhausted = True
             if progress_callback:
-                progress_callback(f"[Omni 1.1 Flash] Generation note: {e}")
+                progress_callback(f"[Wan] Generation note: {e}")
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT_CLIPS.discard(key)
 
         return False, previous_interaction_id
 
@@ -1113,7 +1084,7 @@ class AIStoryboardEngine:
         updated["image_path"] = sb_img_path
         updated["effective_mode"] = effective_mode
 
-        if effective_mode == "omni_video" and self.gemini_api_key:
+        if effective_mode == "omni_video" and self.fal_key:
             ok, _ = self.generate_ai_video_clip(
                 scene_prompt=updated.get("omni_prompt", updated.get("prompt", "")),
                 start_image_path=sb_img_path,
@@ -1296,7 +1267,7 @@ class AIStoryboardEngine:
                 pass
 
             effective_mode = sc.get("effective_mode", "keyframe")
-            if effective_mode == "omni_video" and self.gemini_api_key:
+            if effective_mode == "omni_video" and self.fal_key:
                 # For the final scene, pass Scene 1's keyframe as last_image_path for a seamless visual loop
                 first_scene_img = os.path.join(storyboard_dir, "scene_01.png")
                 loop_last_img = first_scene_img if (idx == total_scenes - 1 and os.path.exists(first_scene_img)) else None
