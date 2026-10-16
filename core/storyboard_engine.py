@@ -93,7 +93,7 @@ class AIStoryboardEngine:
         self.omni_resolution = "720p"
         self.fal_key = os.environ.get("FAL_KEY", "").strip()
         self.video_duration = int(os.environ.get("VIDEO_DURATION", "10"))
-        self.video_resolution = os.environ.get("VIDEO_RESOLUTION", "720p")
+        self.video_resolution = os.environ.get("VIDEO_RESOLUTION", "480p")
         self.video_aspect_ratio = os.environ.get("VIDEO_ASPECT_RATIO", "9:16")
 
         if os.path.exists(self.config_path):
