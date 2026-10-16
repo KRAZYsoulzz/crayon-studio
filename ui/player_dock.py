@@ -20,7 +20,7 @@ class LiveStoryboardCanvas(QWidget):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(200, 355)
+        self.setMinimumSize(140, 248)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.words: list[dict] = []
         self.scenes: list[dict] = []
@@ -228,8 +228,8 @@ class PlayerInspectorDock(GlassCard):
 
     def __init__(self, parent=None):
         super().__init__(radius=18, elevated=True, parent=parent)
-        self.setMinimumWidth(280)
-        self.setMaximumWidth(390)
+        self.setMinimumWidth(260)
+        self.setMaximumWidth(420)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.current_video_path: str = ""
         self._build_ui()
@@ -241,7 +241,8 @@ class PlayerInspectorDock(GlassCard):
 
         # Header + View Mode Switch + Reset Preview
         header = QHBoxLayout()
-        lbl_hdr = QLabel("PREVIEW & EXPORT (9:16)")
+        header.setSpacing(4)
+        lbl_hdr = QLabel("PREVIEW")
         lbl_hdr.setProperty("class", "eyebrow")
         lbl_hdr.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         header.addWidget(lbl_hdr)
@@ -249,16 +250,19 @@ class PlayerInspectorDock(GlassCard):
 
         self.btn_mode_canvas = QPushButton("Scenes")
         self.btn_mode_canvas.setProperty("class", "chip")
+        self.btn_mode_canvas.setStyleSheet("padding: 2px 6px; font-size: 11px;")
         self.btn_mode_canvas.clicked.connect(lambda: self.preview_stack.setCurrentIndex(0))
         header.addWidget(self.btn_mode_canvas)
 
         self.btn_mode_video = QPushButton("Video")
         self.btn_mode_video.setProperty("class", "chip")
+        self.btn_mode_video.setStyleSheet("padding: 2px 6px; font-size: 11px;")
         self.btn_mode_video.clicked.connect(lambda: self.preview_stack.setCurrentIndex(1))
         header.addWidget(self.btn_mode_video)
 
         self.btn_reset_preview = QPushButton("Reset")
         self.btn_reset_preview.setProperty("class", "chip")
+        self.btn_reset_preview.setStyleSheet("padding: 2px 6px; font-size: 11px;")
         self.btn_reset_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_reset_preview.setToolTip("Reset preview canvas & clear loaded video")
         self.btn_reset_preview.clicked.connect(self.clear_preview)
@@ -300,14 +304,17 @@ class PlayerInspectorDock(GlassCard):
         transport.addWidget(self.lbl_time)
         layout.addLayout(transport)
 
-        # Clean Quick Visual Tweak & Quality Check Card
-        critic_card = GlassCard(radius=8)
-        critic_layout = QVBoxLayout(critic_card)
+        # Bottom Sub-Tabs: Visual Tweaks | Captions & Export | Quality Checklist
+        self.sub_tabs = QTabWidget()
+
+        # Tab 1: Visual Critique & Tweaks
+        tweak_tab = QWidget()
+        critic_layout = QVBoxLayout(tweak_tab)
         critic_layout.setContentsMargins(10, 8, 10, 8)
         critic_layout.setSpacing(6)
 
         critic_hdr = QHBoxLayout()
-        lbl_critic_title = QLabel("VISUAL CRITIQUE & TWEAKS")
+        lbl_critic_title = QLabel("SCENE SNAPSHOTS")
         lbl_critic_title.setProperty("class", "eyebrow")
         lbl_critic_title.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         critic_hdr.addWidget(lbl_critic_title)
@@ -323,10 +330,12 @@ class PlayerInspectorDock(GlassCard):
         self.critic_thumbs: list[QLabel] = []
         for tag in ["Opening", "Cutaway", "Action", "Loop"]:
             lbl = QLabel(tag)
-            lbl.setFixedSize(72, 88)
+            lbl.setFixedHeight(70)
+            lbl.setMinimumWidth(48)
+            lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(
-                "background-color: #0d0f13; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: rgba(255,255,255,0.45); font-size: 10px;"
+                "background-color: #181a20; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: rgba(255,255,255,0.45); font-size: 10px;"
             )
             thumbs_row.addWidget(lbl)
             self.critic_thumbs.append(lbl)
@@ -334,7 +343,7 @@ class PlayerInspectorDock(GlassCard):
 
         rev_row = QHBoxLayout()
         self.input_visual_revision = QLineEdit()
-        self.input_visual_revision.setPlaceholderText("Direct scene visual tweak (e.g. 'Scene 1: tighter camera zoom')...")
+        self.input_visual_revision.setPlaceholderText("Direct scene tweak (e.g. 'Scene 1: tighter zoom')...")
         self.input_visual_revision.returnPressed.connect(self._emit_visual_revision)
         rev_row.addWidget(self.input_visual_revision, stretch=1)
 
@@ -343,10 +352,8 @@ class PlayerInspectorDock(GlassCard):
         self.btn_apply_visual_revision.clicked.connect(self._emit_visual_revision)
         rev_row.addWidget(self.btn_apply_visual_revision)
         critic_layout.addLayout(rev_row)
-        layout.addWidget(critic_card)
 
-        # Bottom Sub-Tabs: Save & Captions | Quality Checklist
-        self.sub_tabs = QTabWidget()
+        self.sub_tabs.addTab(tweak_tab, "Tweaks")
 
         # Tab 1: Save Video & Social Captions
         meta_tab = QWidget()
@@ -399,7 +406,7 @@ class PlayerInspectorDock(GlassCard):
         btn_row2.addWidget(self.btn_dispatch, stretch=1)
         meta_layout.addLayout(btn_row2)
 
-        self.sub_tabs.addTab(meta_tab, "Captions && Export")
+        self.sub_tabs.addTab(meta_tab, "Export")
 
         # Tab 2: Viral Quality Checklist
         ret_tab = QWidget()
@@ -434,7 +441,7 @@ class PlayerInspectorDock(GlassCard):
             chk.stateChanged.connect(self.update_retention_score)
             ret_layout.addWidget(chk)
 
-        self.sub_tabs.addTab(ret_tab, "Quality Check")
+        self.sub_tabs.addTab(ret_tab, "Quality")
         layout.addWidget(self.sub_tabs, stretch=2)
 
     def _copy_meta_to_clipboard(self):

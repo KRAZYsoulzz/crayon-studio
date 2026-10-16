@@ -2,11 +2,11 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QPlainTextEdit, QComboBox, QSpinBox,
-    QSplitter, QProgressBar, QFileDialog, QScrollArea, QFrame
+    QSplitter, QProgressBar, QFileDialog, QScrollArea, QFrame,
+    QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCursor, QTextOption
-from PySide6.QtWidgets import QSizePolicy
 from ui.glass_widgets import GlassCard, SelectableStyleCard, StepIndicatorBar
 from ui.storyboard_inspector import StoryboardInspectorWidget
 
@@ -16,30 +16,26 @@ IDEA_BANKS = [
         ("How Sand Turns to Glass", "How It's Made", "3D_Pixar"),
         ("How Noise-Canceling Headphones Erase Sound", "Engineering", "3D_Teardown"),
         ("Why Airplane Windows Have a Tiny Hole", "Engineering", "3D_Pixar"),
-        ("How Undersea Fiber Cables Cross the Ocean", "STEM", "3D_Teardown"),
     ],
     [
         ("How Quartz Watches Keep Exact Time", "Engineering", "3D_Teardown"),
         ("How Bulletproof Glass Stops an Impact", "How It's Made", "3D_Pixar"),
-        ("How Microwave Ovens Heat Food Without Fire", "STEM", "3D_Pixar"),
-        ("Why Suspension Bridges Don't Snap in High Winds", "Architecture", "3D_Pixar"),
+        ("Why Suspension Bridges Don't Snap", "Architecture", "3D_Pixar"),
     ],
     [
-        ("How Piezoelectric Igniters Create 15,000 Volts", "Engineering", "3D_Teardown"),
-        ("How Touchscreens Know Where Your Finger Is", "STEM", "3D_Teardown"),
-        ("How Bank Vault Time Locks Prevent Heists", "Escape/Heist", "3D_Pixar"),
-        ("Why Déjà Vu Happens Inside Your Brain", "Psychology", "2D_Kurzgesagt"),
+        ("How Piezoelectric Igniters Make 15,000V", "Engineering", "3D_Teardown"),
+        ("How Touchscreens Detect Your Finger", "STEM", "3D_Teardown"),
+        ("Why Déjà Vu Happens in the Brain", "Psychology", "2D_Kurzgesagt"),
     ],
 ]
 
 
 class StudioView(QWidget):
     """
-    "Mom-Proof" Guided 4-Step Studio Workspace with Apple Glassmorphic Cards:
-    - Step 1: Pick a Topic & Visual Look (with 1-click idea chips & tactile style cards)
-    - Step 2: Write & Polish Your Script (with 1-click quick-polish chips)
-    - Step 3: Preview Voice & Visual Scenes
-    - Step 4: Create & Save Your Final 9:16 Video (with live upfront cost badge)
+    Apple Pro Guided Studio Workspace:
+    - Step 1: Topic & Visual Look (separate rows for Look and Engine — no horizontal crowding)
+    - Step 2: Script & Pacing (distraction-free writer with word/timing telemetry)
+    - Step 3 & 4: Storyboard Timeline & Video Pipeline
     """
     state_changed = Signal()
     generate_script_requested = Signal()
@@ -59,49 +55,49 @@ class StudioView(QWidget):
 
     def _build_ui(self):
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(16, 12, 16, 12)
-        outer.setSpacing(10)
+        outer.setContentsMargins(14, 10, 14, 10)
+        outer.setSpacing(8)
 
-        # Top Guided 4-Step Progress Header
+        # Top Sleek 36px Stage Tracker
         self.step_bar = StepIndicatorBar()
         self.step_bar.step_clicked.connect(self._on_step_pill_clicked)
         self.step_bar.next_action_triggered.connect(self._on_next_step_cta)
         outer.addWidget(self.step_bar)
 
-        # Main Scrollable Area so the window never expands or locks sizing
+        # Main Scrollable Area for workspace content
         main_scroll = QScrollArea()
         main_scroll.setWidgetResizable(True)
         main_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        main_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        main_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 0, 4, 0)
         scroll_layout.setSpacing(10)
 
-        # Splitter Area inside the scrollable container
+        # Splitter between Script Deck and Storyboard
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(2)
 
         # =====================================================================
-        # TOP HALF: STEP 1 (TOPIC & LOOK) + STEP 2 (SCRIPT & POLISH)
+        # TOP HALF: STEP 1 (TOPIC & LOOK) + STEP 2 (SCRIPT & PACING)
         # =====================================================================
         top_container = QWidget()
         top_layout = QVBoxLayout(top_container)
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(10)
 
-        # --- STEP 1 CARD: Pick Your Topic & Visual Look ---
+        # --- STEP 1 CARD: Topic & Production Setup ---
         self.card_step1 = GlassCard(radius=8)
         s1_layout = QVBoxLayout(self.card_step1)
-        s1_layout.setContentsMargins(16, 14, 16, 14)
-        s1_layout.setSpacing(10)
+        s1_layout.setContentsMargins(14, 12, 14, 12)
+        s1_layout.setSpacing(8)
 
         # Topic Header + Input
         topic_hdr = QHBoxLayout()
         lbl_step1 = QLabel("TOPIC & CONCEPT")
         lbl_step1.setProperty("class", "eyebrow")
-        lbl_step1.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         topic_hdr.addWidget(lbl_step1)
         topic_hdr.addStretch()
 
@@ -113,7 +109,7 @@ class StudioView(QWidget):
         s1_layout.addLayout(topic_hdr)
 
         topic_input_row = QHBoxLayout()
-        topic_input_row.setSpacing(10)
+        topic_input_row.setSpacing(8)
         self.input_title = QLineEdit()
         self.input_title.setPlaceholderText("Enter topic (e.g., How Sand Turns to Glass, Why Bridges Don't Collapse)...")
         self.input_title.setStyleSheet("font-size: 13px; padding: 8px 12px;")
@@ -127,7 +123,7 @@ class StudioView(QWidget):
         topic_input_row.addWidget(self.btn_generate_script)
         s1_layout.addLayout(topic_input_row)
 
-        # Instant 1-Click Idea Suggestion Pills
+        # Suggestions Row
         ideas_row = QHBoxLayout()
         ideas_row.setSpacing(6)
         lbl_ideas = QLabel("Suggestions:")
@@ -135,7 +131,7 @@ class StudioView(QWidget):
         ideas_row.addWidget(lbl_ideas)
 
         self.idea_chip_buttons: list[QPushButton] = []
-        for _ in range(4):
+        for _ in range(3):
             chip = QPushButton()
             chip.setProperty("class", "chip")
             chip.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -160,22 +156,15 @@ class StudioView(QWidget):
         s1_layout.addLayout(ideas_row)
         self._populate_idea_chips()
 
-        # Tactile Visual Style & Render Mode Cards Row
-        cards_row = QHBoxLayout()
-        cards_row.setSpacing(12)
-
-        # Left Group: Choose Visual Style
-        style_col = QVBoxLayout()
-        style_col.setSpacing(6)
+        # Row 1 of Cards: Visual Style (3 cards across - clean and spacious)
         lbl_vis = QLabel("VISUAL STYLE")
         lbl_vis.setProperty("class", "eyebrow")
-        lbl_vis.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
-        style_col.addWidget(lbl_vis)
+        s1_layout.addWidget(lbl_vis)
 
         style_cards_h = QHBoxLayout()
         style_cards_h.setSpacing(8)
         style_defs = [
-            ("3D_Pixar", "3D Cutaway", "Pixar & Zack D. Films style cross-section", "Standard"),
+            ("3D_Pixar", "3D Cutaway", "Pixar & Zack D. Films cross-section", "Standard"),
             ("3D_Teardown", "3D Teardown", "Exploded mechanical and engineering view", ""),
             ("2D_Kurzgesagt", "Illustrated", "Clean vector infographics & scientific art", ""),
         ]
@@ -184,22 +173,18 @@ class StudioView(QWidget):
             sc.clicked.connect(self._on_style_card_clicked)
             style_cards_h.addWidget(sc)
             self.style_cards[key] = sc
-        style_col.addLayout(style_cards_h)
-        cards_row.addLayout(style_col, stretch=3)
+        s1_layout.addLayout(style_cards_h)
 
-        # Right Group: Choose Quality & Cost Mode
-        mode_col = QVBoxLayout()
-        mode_col.setSpacing(6)
+        # Row 2 of Cards: Render Mode (3 cards across)
         lbl_mod = QLabel("RENDER PIPELINE")
         lbl_mod.setProperty("class", "eyebrow")
-        lbl_mod.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
-        mode_col.addWidget(lbl_mod)
+        s1_layout.addWidget(lbl_mod)
 
         mode_cards_h = QHBoxLayout()
         mode_cards_h.setSpacing(8)
         mode_defs = [
+            ("smart_hybrid", "Smart Hybrid", "AI video hook + 2.5D motion keyframes", "Balanced"),
             ("full_omni", "AI Video Clips", "Every scene generated as motion video (Wan)", "Maximum"),
-            ("smart_hybrid", "Smart Hybrid", "AI video hook with 2.5D motion keyframes", "Balanced"),
             ("keyframe_only", "Keyframe Motion", "High-speed keyframes with Ken Burns camera", "Fast Draft"),
         ]
         for key, title, desc, badge in mode_defs:
@@ -207,12 +192,9 @@ class StudioView(QWidget):
             mc.clicked.connect(self._on_mode_card_clicked)
             mode_cards_h.addWidget(mc)
             self.mode_cards[key] = mc
-        mode_col.addLayout(mode_cards_h)
-        cards_row.addLayout(mode_col, stretch=3)
+        s1_layout.addLayout(mode_cards_h)
 
-        s1_layout.addLayout(cards_row)
-
-        # Hidden / Synchronized ComboBoxes + Collapsible Optional Extras Drawer
+        # Collapsible Optional Extras Drawer
         self.extras_widget = QWidget()
         extras_layout = QHBoxLayout(self.extras_widget)
         extras_layout.setContentsMargins(0, 4, 0, 0)
@@ -232,19 +214,18 @@ class StudioView(QWidget):
         extras_layout.addWidget(self.combo_category)
 
         lbl_dur = QLabel("Target Duration:")
-        lbl_dur.setStyleSheet("color: #F5F5F7; font-weight: 600; background: transparent;")
+        lbl_dur.setStyleSheet("color: #f3f4f6; font-weight: 500; background: transparent;")
         extras_layout.addWidget(lbl_dur)
         self.spin_duration = QSpinBox()
         self.spin_duration.setRange(30, 120)
         self.spin_duration.setValue(65)
         self.spin_duration.setSuffix(" sec (61-70s TikTok)")
-        self.spin_duration.setToolTip("TikTok Creator Rewards Program requires videos to be strictly 61+ seconds to qualify for monetization.")
         self.spin_duration.valueChanged.connect(self._on_duration_or_script_changed)
         extras_layout.addWidget(self.spin_duration)
 
-        extras_layout.addWidget(QLabel("Product Mention (Optional):"))
+        extras_layout.addWidget(QLabel("Product Mention:"))
         self.input_product = QLineEdit()
-        self.input_product.setPlaceholderText("Leave blank for pure educational video...")
+        self.input_product.setPlaceholderText("Leave blank for educational...")
         self.input_product.textChanged.connect(self._on_any_change)
         extras_layout.addWidget(self.input_product, stretch=1)
 
@@ -253,21 +234,20 @@ class StudioView(QWidget):
         self.btn_pick_style_ref.clicked.connect(self._pick_style_ref)
         extras_layout.addWidget(self.btn_pick_style_ref)
 
-        # Keep combo_style and combo_render_mode synced for programmatic access
+        # Hidden synchronized combos for programmatic access
         self.combo_style = QComboBox()
         self.combo_style.addItem("3D Cutaway", "3D_Pixar")
         self.combo_style.addItem("3D Teardown", "3D_Teardown")
         self.combo_style.addItem("2D Storybook", "2D_Kurzgesagt")
-        self.combo_style.addItem("Custom Style", "Custom_Style")
         self.combo_style.currentIndexChanged.connect(self._sync_cards_from_combos)
         self.combo_style.setVisible(False)
         extras_layout.addWidget(self.combo_style)
 
         self.combo_render_mode = QComboBox()
-        self.combo_render_mode.addItem("Full Omni", "full_omni")
         self.combo_render_mode.addItem("Smart Hybrid", "smart_hybrid")
+        self.combo_render_mode.addItem("Full Omni", "full_omni")
         self.combo_render_mode.addItem("Keyframe Only", "keyframe_only")
-        self.combo_render_mode.setCurrentIndex(self.combo_render_mode.findData("smart_hybrid"))
+        self.combo_render_mode.setCurrentIndex(0)
         self.combo_render_mode.currentIndexChanged.connect(self._sync_cards_from_combos)
         self.combo_render_mode.setVisible(False)
         extras_layout.addWidget(self.combo_render_mode)
@@ -276,22 +256,21 @@ class StudioView(QWidget):
         s1_layout.addWidget(self.extras_widget)
         top_layout.addWidget(self.card_step1)
 
-        # --- STEP 2 CARD: Review & Polish Your Script ---
+        # --- STEP 2 CARD: Script Editor & Pacing ---
         self.card_step2 = GlassCard(radius=8)
         s2_layout = QVBoxLayout(self.card_step2)
-        s2_layout.setContentsMargins(16, 12, 16, 12)
+        s2_layout.setContentsMargins(14, 12, 14, 12)
         s2_layout.setSpacing(8)
 
         s2_header = QHBoxLayout()
         lbl_step2 = QLabel("SCRIPT & PACING")
         lbl_step2.setProperty("class", "eyebrow")
-        lbl_step2.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         s2_header.addWidget(lbl_step2)
 
         self.lbl_word_stats = QLabel("00:00.00  •  0 words")
         self.lbl_word_stats.setProperty("class", "mono")
         self.lbl_word_stats.setStyleSheet(
-            "background-color: rgba(255,255,255,0.05); color: #c7c7cc; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
+            "background-color: rgba(255,255,255,0.06); color: #d1d5db; border: 1px solid rgba(255,255,255,0.10); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
         )
         s2_header.addWidget(self.lbl_word_stats)
         s2_header.addStretch()
@@ -309,12 +288,12 @@ class StudioView(QWidget):
             "Click 'Write Script' above or enter custom narration here. Generated script automatically turns into timed voiceover and scenes."
         )
         self.txt_script.setMinimumHeight(110)
-        self.txt_script.setMaximumHeight(220)
+        self.txt_script.setMaximumHeight(200)
         self.txt_script.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.txt_script.textChanged.connect(self._on_duration_or_script_changed)
         s2_layout.addWidget(self.txt_script)
 
-        # Quick Polish Chips + Plain-English Revision Input
+        # Quick Polish Tools
         polish_row = QHBoxLayout()
         polish_row.setSpacing(6)
         lbl_pol = QLabel("Quick Polish:")
@@ -324,7 +303,7 @@ class StudioView(QWidget):
         quick_prompts = [
             ("Enhance Hook", "Make the opening hook more exciting and curiosity-inducing."),
             ("Simplify Language", "Explain the mechanism in simpler, everyday conversational language."),
-            ("Extend to 65s", "Expand the explanation with fascinating scientific/engineering details so the script reaches 61 to 70 seconds (~150 words) to qualify for TikTok Creator Rewards monetization."),
+            ("Extend to 65s", "Expand the explanation with fascinating scientific details so the script reaches 61-70s to qualify for TikTok Creator Rewards monetization."),
             ("Tighten Pacing", "Shorten and tighten the pacing so it is punchier."),
             ("Clean Standalone", "Stop referring to the video name and rewrite cleanly as a standalone script."),
         ]
@@ -360,13 +339,12 @@ class StudioView(QWidget):
         # =====================================================================
         self.card_step3 = GlassCard(radius=8)
         s3_layout = QVBoxLayout(self.card_step3)
-        s3_layout.setContentsMargins(16, 12, 16, 12)
+        s3_layout.setContentsMargins(14, 12, 14, 12)
         s3_layout.setSpacing(8)
 
         s3_header = QHBoxLayout()
         lbl_step3 = QLabel("SCENE BREAKDOWN & PRODUCTION")
         lbl_step3.setProperty("class", "eyebrow")
-        lbl_step3.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 10px; font-weight: 600; letter-spacing: 1.2px;")
         s3_header.addWidget(lbl_step3)
         s3_header.addStretch()
         s3_layout.addLayout(s3_header)
@@ -374,44 +352,45 @@ class StudioView(QWidget):
         self.storyboard_inspector = StoryboardInspectorWidget()
         s3_layout.addWidget(self.storyboard_inspector, stretch=1)
 
-        # Prominent Guided Action Bar
-        pipe_bar = QHBoxLayout()
-        pipe_bar.setSpacing(12)
+        # Bottom Guided Action Bar (Two clean rows to eliminate squeeze)
+        action_row = QHBoxLayout()
+        action_row.setSpacing(10)
 
         self.btn_run_audio = QPushButton("Build Voiceover && Scenes")
         self.btn_run_audio.setProperty("class", "primary")
         self.btn_run_audio.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_run_audio.clicked.connect(self.run_audio_requested.emit)
-        pipe_bar.addWidget(self.btn_run_audio)
+        action_row.addWidget(self.btn_run_audio)
 
         self.btn_run_render = QPushButton("Render Final Video (Est. $0.00)")
         self.btn_run_render.setProperty("class", "success")
         self.btn_run_render.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_run_render.clicked.connect(self.run_render_requested.emit)
-        pipe_bar.addWidget(self.btn_run_render)
+        action_row.addWidget(self.btn_run_render)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFixedWidth(160)
-        pipe_bar.addWidget(self.progress_bar)
+        self.progress_bar.setFixedWidth(140)
+        action_row.addWidget(self.progress_bar)
+
+        action_row.addStretch()
+        s3_layout.addLayout(action_row)
 
         self.lbl_pipeline_status = QLabel("Ready — Pick a topic in Step 1 to begin.")
-        self.lbl_pipeline_status.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 12px; background: transparent;")
-        pipe_bar.addWidget(self.lbl_pipeline_status, stretch=1)
+        self.lbl_pipeline_status.setStyleSheet("color: rgba(255, 255, 255, 0.45); font-size: 11.5px; background: transparent;")
+        s3_layout.addWidget(self.lbl_pipeline_status)
 
-        s3_layout.addLayout(pipe_bar)
         splitter.addWidget(self.card_step3)
-
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(0, 4)
+        splitter.setStretchFactor(1, 5)
         scroll_layout.addWidget(splitter)
 
         main_scroll.setWidget(scroll_content)
         outer.addWidget(main_scroll, stretch=1)
 
     # =========================================================================
-    # INTERACTIVE STEPPER & CARD HELPERS
+    # INTERACTIVE HELPERS
     # =========================================================================
     def _populate_idea_chips(self):
         bank = IDEA_BANKS[self._idea_bank_idx % len(IDEA_BANKS)]
@@ -437,16 +416,12 @@ class StudioView(QWidget):
             if c_idx >= 0:
                 self.combo_category.setCurrentIndex(c_idx)
             self._on_style_card_clicked(style)
-            self.step_bar.set_step(
-                0,
-                f"Topic set to \"{title}\". Click 'Write Script →' to generate your script.",
-                "Write Script →",
-            )
+            self.step_bar.set_step(0, "", "Write Script ⌘↵")
 
     def _toggle_extras(self):
         vis = not self.extras_widget.isVisible()
         self.extras_widget.setVisible(vis)
-        self.btn_extras_toggle.setText("Optional Extras ▾" if vis else "Optional Extras ▸")
+        self.btn_extras_toggle.setText("Options ▾" if vis else "Options ▸")
 
     def _on_style_card_clicked(self, key: str):
         idx = self.combo_style.findData(key)
@@ -488,7 +463,6 @@ class StudioView(QWidget):
             self.run_render_requested.emit()
 
     def update_cost_estimates(self, tracker: object, image_model: str = "gemini-nano-banana-2.1", omni_res: str = "720p"):
-        """Updates the live USD cost badges on the Quality/Cost cards and the primary Create Video button."""
         scenes = self.storyboard_inspector.get_scenes()
         current_mode = self.combo_render_mode.currentData() or "smart_hybrid"
 
@@ -516,7 +490,7 @@ class StudioView(QWidget):
             self.btn_pick_style_ref.setText(os.path.basename(self.style_reference_path))
             self.btn_pick_style_ref.setToolTip(self.style_reference_path)
         else:
-            self.btn_pick_style_ref.setText("Style Reference...")
+            self.btn_pick_style_ref.setText("Custom Style Image...")
             self.btn_pick_style_ref.setToolTip("")
 
     def _emit_script_revision(self):
@@ -533,23 +507,23 @@ class StudioView(QWidget):
         if est_sec >= 61 and est_sec <= 75:
             self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Monetized (61–70s)")
             self.lbl_word_stats.setStyleSheet(
-                "background-color: rgba(48,209,88,0.12); color: #30D158; border: 1px solid rgba(48,209,88,0.28); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
+                "background-color: rgba(48,209,88,0.15); color: #30D158; border: 1px solid rgba(48,209,88,0.30); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )
         elif est_sec < 61 and w_count > 0:
             shortfall = max(1, 145 - w_count)
             self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Under 61s (+{shortfall}w needed)")
             self.lbl_word_stats.setStyleSheet(
-                "background-color: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.28); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
+                "background-color: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.30); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )
         elif est_sec > 75:
             self.lbl_word_stats.setText(f"{timecode}  •  {w_count} words  •  Longer than 75s")
             self.lbl_word_stats.setStyleSheet(
-                "background-color: rgba(255,255,255,0.05); color: #c7c7cc; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
+                "background-color: rgba(255,255,255,0.06); color: #d1d5db; border: 1px solid rgba(255,255,255,0.10); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )
         else:
             self.lbl_word_stats.setText("00:00.00  •  0 words  •  Target: 61–70s")
             self.lbl_word_stats.setStyleSheet(
-                "background-color: rgba(255,255,255,0.05); color: #c7c7cc; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 3px 8px; font-size: 11px;"
+                "background-color: rgba(255,255,255,0.06); color: #d1d5db; border: 1px solid rgba(255,255,255,0.10); border-radius: 6px; padding: 2px 8px; font-size: 11px;"
             )
         if w_count >= 20 and self.step_bar.current_step == 0:
             self.step_bar.set_step(1)

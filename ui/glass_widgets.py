@@ -1,9 +1,9 @@
 """
-CRAYON STUDIO — Apple HIG Reusable Native Components
+CRAYON STUDIO — Pro Graphite/Slate Reusable Native Components
 Implements:
-- `GlassCard`: Layered charcoal surface with 8px radius and dual-layer micro-bevel border
+- `GlassCard`: Layered graphite slate surface with 8px radius and dual-layer micro-bevel border
 - `SelectableStyleCard`: Hardware-styled option card with 8px radius and active depression
-- `StepIndicatorBar`: Segmented 4-step progress header with keyboard shortcut hints
+- `StepIndicatorBar`: Sleek 36px segmented stage bar with keyboard shortcut hints
 - `LiveUsagePill`: Monospace tabular telemetry pill and 12px floating slate ledger popover
 - `MacTitleBar`: Custom integrated macOS titlebar with native traffic light controls & drag zone
 """
@@ -13,23 +13,22 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from PySide6.QtWidgets import (
     QFrame, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
-    QDialog, QGraphicsDropShadowEffect, QSizePolicy
+    QDialog, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QRectF, QUrl, QPoint
 from PySide6.QtGui import (
-    QPainter, QColor, QPen, QLinearGradient, QPainterPath, QDesktopServices, QCursor, QFont
+    QPainter, QColor, QPen, QPainterPath, QDesktopServices, QCursor
 )
 from ui.theme import (
     CARD_BG, CARD_ELEVATED_BG, SURFACE_FLOATING, BORDER_CARD, BORDER_HIGHLIGHT,
     BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, TEXT_MONO,
-    ACCENT_BLUE, ACCENT_GREEN, ACCENT_AMBER, ACCENT_RED,
+    ACCENT_BLUE, ACCENT_BLUE_HOVER, ACCENT_BLUE_PRESSED, ACCENT_GREEN, ACCENT_AMBER, ACCENT_RED,
     RADIUS_SM, RADIUS_MD, RADIUS_LG, FONT_MONO
 )
 
 
 class MacTitleBar(QFrame):
     """Integrated macOS titlebar with traffic light buttons (Close, Minimize, Maximize)
-
     and a dedicated drag region for frameless window movement.
     """
 
@@ -46,7 +45,7 @@ class MacTitleBar(QFrame):
 
     def _build_ui(self, title: str):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 0, 16, 0)
+        layout.setContentsMargins(14, 0, 16, 0)
         layout.setSpacing(8)
 
         # Traffic Lights Container
@@ -119,20 +118,20 @@ class MacTitleBar(QFrame):
         layout.addLayout(traffic_box)
         layout.addSpacing(12)
 
-        # Centered Window Title
+        # Window Title / Breadcrumb
         self.lbl_title = QLabel(title)
         self.lbl_title.setStyleSheet(f"""
-            color: {TEXT_SECONDARY};
-            font-size: 12px;
-            font-weight: 550;
+            color: {TEXT_PRIMARY};
+            font-size: 12.5px;
+            font-weight: 600;
             letter-spacing: -0.01em;
             background: transparent;
         """)
         layout.addWidget(self.lbl_title)
         layout.addStretch()
 
-        # Keyboard Shortcut Reference Pill in Titlebar
-        self.lbl_hint = QLabel("Press  Esc  to cancel  •  ⌘↵ to generate")
+        # Keyboard Shortcut Reference in Titlebar
+        self.lbl_hint = QLabel("Esc to cancel  •  ⌘↵ to generate")
         self.lbl_hint.setStyleSheet(f"""
             color: {TEXT_MUTED};
             font-size: 11px;
@@ -162,8 +161,7 @@ class MacTitleBar(QFrame):
 
 
 class GlassCard(QFrame):
-    """Elevated Charcoal (#13161b) container with strict 8px corners,
-
+    """Elevated Graphite Slate container with strict 8px corners,
     dual-layer micro-bevel border, and top specular highlight.
     """
 
@@ -181,16 +179,17 @@ class GlassCard(QFrame):
         path = QPainterPath()
         path.addRoundedRect(rect, self.radius, self.radius)
 
-        # Dual-Layer Fill: Elevated Charcoal surface
-        bg_color = QColor(23, 26, 33, 255) if self.elevated else QColor(19, 22, 27, 255)
+        # Middle-ground graphite slate surface
+        # elevated = #303440 (RGB: 48, 52, 64), standard = #282b35 (RGB: 40, 43, 53)
+        bg_color = QColor(48, 52, 64, 255) if self.elevated else QColor(40, 43, 53, 255)
         painter.fillPath(path, bg_color)
 
-        # Base 1px micro-bevel border
-        painter.setPen(QPen(QColor(255, 255, 255, 18), 1.0))
+        # 1px micro-bevel border
+        painter.setPen(QPen(QColor(255, 255, 255, 24), 1.0))
         painter.drawPath(path)
 
-        # Top specular highlight line (hardware bevel)
-        painter.setPen(QPen(QColor(255, 255, 255, 34), 1.0))
+        # Top specular highlight line
+        painter.setPen(QPen(QColor(255, 255, 255, 42), 1.0))
         painter.drawLine(
             int(rect.left() + self.radius),
             int(rect.top()),
@@ -201,7 +200,6 @@ class GlassCard(QFrame):
 
 class SelectableStyleCard(QFrame):
     """Hardware-styled selection card with 8px radius, optical kerning,
-
     micro-bevel borders, and active click depression.
     """
 
@@ -221,20 +219,20 @@ class SelectableStyleCard(QFrame):
         self._selected = selected
         self._pressed = False
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.setMinimumHeight(68)
+        self.setMinimumHeight(52)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 9, 12, 9)
-        layout.setSpacing(3)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(2)
 
         top_row = QHBoxLayout()
         top_row.setSpacing(6)
         self.lbl_title = QLabel(icon_and_title)
         self.lbl_title.setStyleSheet(f"""
-            font-weight: 550;
-            font-size: 12.5px;
-            letter-spacing: -0.02em;
+            font-weight: 600;
+            font-size: 12px;
+            letter-spacing: -0.01em;
             color: {TEXT_PRIMARY};
             background: transparent;
         """)
@@ -249,15 +247,32 @@ class SelectableStyleCard(QFrame):
 
         self.lbl_desc = QLabel(description)
         self.lbl_desc.setWordWrap(True)
-        self.lbl_desc.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 11px; background: transparent;")
+        self.lbl_desc.setStyleSheet(f"""
+            font-size: 11px;
+            color: {TEXT_SECONDARY};
+            line-height: 1.25;
+            background: transparent;
+        """)
         layout.addWidget(self.lbl_desc)
 
     def _style_badge(self):
-        if self._selected:
+        txt = self.lbl_badge.text()
+        if "Popular" in txt or "Standard" in txt or "Recommended" in txt or "Balanced" in txt:
             self.lbl_badge.setStyleSheet(f"""
-                background-color: rgba(0, 113, 227, 0.20);
-                color: #64d2ff;
-                border: 1px solid rgba(0, 113, 227, 0.50);
+                background-color: rgba(0, 113, 227, 0.16);
+                color: {ACCENT_BLUE_HOVER};
+                border: 1px solid rgba(0, 113, 227, 0.35);
+                border-radius: {RADIUS_SM}px;
+                padding: 1px 6px;
+                font-size: 10px;
+                font-weight: 600;
+                font-family: {FONT_MONO};
+            """)
+        elif "$" in txt or "Credit" in txt or "Cost" in txt:
+            self.lbl_badge.setStyleSheet(f"""
+                background-color: rgba(245, 158, 11, 0.14);
+                color: {ACCENT_AMBER};
+                border: 1px solid rgba(245, 158, 11, 0.35);
                 border-radius: {RADIUS_SM}px;
                 padding: 1px 6px;
                 font-size: 10px;
@@ -266,9 +281,9 @@ class SelectableStyleCard(QFrame):
             """)
         else:
             self.lbl_badge.setStyleSheet(f"""
-                background-color: rgba(255, 255, 255, 0.05);
+                background-color: rgba(255, 255, 255, 0.06);
                 color: {TEXT_MUTED};
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.10);
                 border-radius: {RADIUS_SM}px;
                 padding: 1px 6px;
                 font-size: 10px;
@@ -307,94 +322,68 @@ class SelectableStyleCard(QFrame):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Micro tactile depression on active click
-        inset = 1.5 if self._pressed else 1.0
+        inset = 1.0 if not self._pressed else 1.5
         rect = QRectF(self.rect()).adjusted(inset, inset, -inset, -inset)
         path = QPainterPath()
         path.addRoundedRect(rect, RADIUS_MD, RADIUS_MD)
 
         if self._selected:
-            painter.fillPath(path, QColor(0, 113, 227, 28))
+            painter.fillPath(path, QColor(0, 113, 227, 42))
             painter.setPen(QPen(QColor(ACCENT_BLUE), 1.5))
         else:
-            painter.fillPath(path, QColor(22, 26, 33, 230))
-            painter.setPen(QPen(QColor(255, 255, 255, 18), 1.0))
+            painter.fillPath(path, QColor(48, 52, 64, 255))
+            painter.setPen(QPen(QColor(255, 255, 255, 22), 1.0))
 
         painter.drawPath(path)
 
-        # Top specular edge
-        if not self._selected:
-            painter.setPen(QPen(QColor(255, 255, 255, 30), 1.0))
-            painter.drawLine(
-                int(rect.left() + RADIUS_MD),
-                int(rect.top()),
-                int(rect.right() - RADIUS_MD),
-                int(rect.top()),
-            )
 
-
-class StepIndicatorBar(GlassCard):
-    """Disciplined Segmented 4-Step Progress Header with keyboard shortcut badges (⌘↵)."""
+class StepIndicatorBar(QFrame):
+    """Sleek 36px Segmented Stage Tracker for Guided Video Creation."""
 
     step_clicked = Signal(int)
     next_action_triggered = Signal(int)
 
     STEP_TITLES = [
-        "1. Topic & Style",
-        "2. Script & Polish",
-        "3. Voice & Scenes",
-        "4. Video Output",
+        "1. Topic",
+        "2. Script",
+        "3. Storyboard",
+        "4. Render",
     ]
 
-    STEP_GUIDANCE = {
-        0: ("Select an educational topic or enter a custom premise below, then generate your script.", "Generate Script ⌘↵"),
-        1: ("Review and refine your script pacing. Target 61–70s for Creator Rewards monetization.", "Build Voice & Scenes ⌘↵"),
-        2: ("Preview scene choreography cards and timing. Confirm visuals before compiling video.", "Compile Video ⌘↵"),
-        3: ("Final 9:16 vertical video compiled. Review player on right and export high-bitrate MP4.", "Export Video (.MP4)"),
-    }
+    STEP_CTAS = [
+        "Write Script ⌘↵",
+        "Build Scenes ⌘↵",
+        "Render Video ⌘↵",
+        "Export Video (.MP4)",
+    ]
 
     def __init__(self, parent: Optional[QWidget] = None):
-        super().__init__(radius=RADIUS_MD, elevated=True, parent=parent)
+        super().__init__(parent)
+        self.setFixedHeight(38)
         self.current_step: int = 0
         self.step_buttons: List[QPushButton] = []
         self._build_ui()
         self.set_step(0)
 
     def _build_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(6)
-
-        # Top Row: 4 Segment Buttons + Next CTA
-        pills_row = QHBoxLayout()
-        pills_row.setSpacing(6)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(4)
 
         for idx, title in enumerate(self.STEP_TITLES):
             btn = QPushButton(title)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.clicked.connect(lambda _checked=False, i=idx: self.step_clicked.emit(i))
-            pills_row.addWidget(btn)
+            layout.addWidget(btn)
             self.step_buttons.append(btn)
 
-        pills_row.addStretch()
+        layout.addStretch()
 
-        self.btn_next_cta = QPushButton("Generate Script")
+        self.btn_next_cta = QPushButton("Write Script")
         self.btn_next_cta.setProperty("class", "primary")
         self.btn_next_cta.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_next_cta.clicked.connect(lambda: self.next_action_triggered.emit(self.current_step))
-        pills_row.addWidget(self.btn_next_cta)
-
-        layout.addLayout(pills_row)
-
-        # Bottom Row: Eyebrow-style guidance note
-        self.lbl_guidance = QLabel("")
-        self.lbl_guidance.setStyleSheet(f"""
-            color: {TEXT_SECONDARY};
-            font-size: 11.5px;
-            font-weight: 450;
-            background: transparent;
-        """)
-        layout.addWidget(self.lbl_guidance)
+        layout.addWidget(self.btn_next_cta)
 
     def set_step(self, step_index: int, custom_guidance: str = "", custom_cta: str = ""):
         self.current_step = max(0, min(3, step_index))
@@ -403,35 +392,34 @@ class StepIndicatorBar(GlassCard):
                 btn.setStyleSheet(f"""
                     background-color: {ACCENT_BLUE};
                     color: #ffffff;
-                    border: 1px solid rgba(255, 255, 255, 0.3);
+                    border: 1px solid rgba(255, 255, 255, 0.30);
                     border-radius: {RADIUS_SM}px;
-                    padding: 5px 12px;
+                    padding: 4px 8px;
                     font-weight: 600;
-                    font-size: 11.5px;
+                    font-size: 11px;
                 """)
             elif i < self.current_step:
                 btn.setStyleSheet(f"""
-                    background-color: rgba(48, 209, 88, 0.14);
+                    background-color: rgba(48, 209, 88, 0.15);
                     color: {ACCENT_GREEN};
                     border: 1px solid rgba(48, 209, 88, 0.35);
                     border-radius: {RADIUS_SM}px;
-                    padding: 5px 12px;
+                    padding: 4px 8px;
                     font-weight: 550;
-                    font-size: 11.5px;
+                    font-size: 11px;
                 """)
             else:
                 btn.setStyleSheet(f"""
                     background-color: rgba(255, 255, 255, 0.04);
                     color: {TEXT_MUTED};
-                    border: 1px solid rgba(255, 255, 255, 0.07);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
                     border-radius: {RADIUS_SM}px;
-                    padding: 5px 12px;
-                    font-weight: 450;
-                    font-size: 11.5px;
+                    padding: 4px 8px;
+                    font-weight: 500;
+                    font-size: 11px;
                 """)
 
-        default_guide, default_cta = self.STEP_GUIDANCE.get(self.current_step, ("", "Next Step"))
-        self.lbl_guidance.setText(custom_guidance or default_guide)
+        default_cta = self.STEP_CTAS[self.current_step]
         self.btn_next_cta.setText(custom_cta or default_cta)
 
 
@@ -465,7 +453,7 @@ class LiveUsagePill(QFrame):
         layout.addWidget(self.lbl_dot)
 
         self.lbl_status = QLabel("Checking API...")
-        self.lbl_status.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: 550; font-size: 11.5px; background: transparent;")
+        self.lbl_status.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: 600; font-size: 11.5px; background: transparent;")
         layout.addWidget(self.lbl_status)
 
         self.lbl_metrics = QLabel("Session: $0.00")
@@ -491,7 +479,7 @@ class LiveUsagePill(QFrame):
             self.lbl_status.setText("Cloud Active")
         elif status == "Depleted_402":
             self.lbl_dot.setStyleSheet(f"color: {ACCENT_AMBER}; font-size: 10px; background: transparent;")
-            self.lbl_status.setText("Free Tier / Offline")
+            self.lbl_status.setText("Free Tier")
         elif status == "Invalid_Key":
             self.lbl_dot.setStyleSheet(f"color: {ACCENT_RED}; font-size: 10px; background: transparent;")
             self.lbl_status.setText("Invalid Key")

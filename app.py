@@ -5,7 +5,7 @@ import json
 import shutil
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QPushButton, QStackedWidget, QFrame, QMessageBox, QFileDialog
+    QLabel, QPushButton, QStackedWidget, QFrame, QMessageBox, QFileDialog, QSplitter
 )
 from PySide6.QtCore import Qt, QTimer
 
@@ -233,11 +233,19 @@ class CrayonStudioWindow(QMainWindow):
         self.workspace_stack.addWidget(self.settings_view)
         center_v.addWidget(self.workspace_stack, stretch=1)
 
-        content_h.addWidget(center_col, stretch=1)
+        # Main Work Area Splitter: Center Workspaces | Right Phone Preview Dock
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setHandleWidth(2)
+        self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.addWidget(center_col)
 
         # 3. Persistent Right 9:16 Phone Preview & Publish Dock
         self.player_dock = PlayerInspectorDock()
-        content_h.addWidget(self.player_dock, 0)
+        self.main_splitter.addWidget(self.player_dock)
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 0)
+
+        content_h.addWidget(self.main_splitter, stretch=1)
 
         self._connect_signals()
         self.switch_nav(0)
@@ -317,6 +325,7 @@ class CrayonStudioWindow(QMainWindow):
             self.sync_ui_to_project_state(persist_db=True)
             self.calendar_view.refresh_projects(get_all_projects())
         self.workspace_stack.setCurrentIndex(index)
+        self.player_dock.setVisible(index == 0)
 
     def get_project_dir(self) -> str:
         slug = self.current_project.get("project_slug") or slugify_topic(self.current_project.get("title", "project"))

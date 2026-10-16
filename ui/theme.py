@@ -1,50 +1,54 @@
 """
-CRAYON STUDIO — Apple Human Interface Guidelines (HIG) macOS-Native Theme Tokens
-Centralized design tokens and QSS stylesheet implementing hardware-level polish:
-- Deep Obsidian (#090a0c) Canvas
-- Translucent Glass Sidebar & Top Chrome: rgba(18, 20, 24, 0.65) with 1px border
-- Elevated Charcoal (#13161b) Cards & Containers
-- Floating Slate (#1a1e24) Popovers & Dialogs
-- Strict Radii: 6px inputs/buttons/badges, 8px cards/menus/players, 12px major dialogs
-- Dual-layer micro-bevel borders with 1px specular top highlight
-- Zero generic AI tropes (purged emoji titles, purple gradients, glow shadows)
-- Monospace tabular data density for metrics and timecodes
-- Tactile active depression: transform / pressed depth
+CRAYON STUDIO — Apple Pro Graphite/Slate Theme Tokens
+Middle-of-the-road tone: neutral graphite slate (not pitch black, not bright light).
+Refined, premium desktop aesthetic inspired by Apple Pro creative tools (Final Cut Pro, Logic Pro, Xcode)
+and modern high-end software (Linear, Screen Studio, Raycast).
 """
 
 from __future__ import annotations
 
 # =============================================================================
-# DESIGN TOKENS (Python Constants)
+# DESIGN TOKENS (Middle-Tone Graphite Slate Palette)
 # =============================================================================
-CANVAS_BG = "#090a0c"
-SIDEBAR_BG = "rgba(18, 20, 24, 0.85)"
-TOPBAR_BG = "rgba(18, 20, 24, 0.75)"
-CARD_BG = "#13161b"
-CARD_ELEVATED_BG = "#171a21"
-SURFACE_FLOATING = "#1a1e24"
-INPUT_BG = "#0d0f13"
-INPUT_FOCUS_BG = "#13161c"
+# Canvas & Chromes (Neutral Charcoal/Graphite)
+CANVAS_BG = "#1f2229"         # Clean middle-dark slate canvas (~13.5% lightness)
+SIDEBAR_BG = "#181a20"        # Grounded sidebar graphite
+TOPBAR_BG = "#191b21"         # Cohesive top window bar
+SURFACE_FLOATING = "#353a48"  # Modals, popovers, dropdown lists
 
-BORDER_SUBTLE = "rgba(255, 255, 255, 0.07)"
-BORDER_CARD = "rgba(255, 255, 255, 0.08)"
-BORDER_HIGHLIGHT = "rgba(255, 255, 255, 0.14)"
+# Surfaces & Containers (Elevated Slate - clearly distinct from canvas)
+CARD_BG = "#282b35"           # Primary cards & panels (~18% lightness)
+CARD_ELEVATED_BG = "#303440"  # Elevated cards, active items (~22% lightness)
+CARD_HOVER_BG = "#343846"     # Subtle card hover
 
-TEXT_PRIMARY = "#f5f5f7"
-TEXT_SECONDARY = "#a1a1a6"
-TEXT_MUTED = "rgba(255, 255, 255, 0.45)"
-TEXT_MONO = "#c7c7cc"
+# Inset Fields (Editors, Inputs)
+INPUT_BG = "#181a20"          # Crisp recessed input background
+INPUT_FOCUS_BG = "#1b1e27"    # Focused input background
+INPUT_BORDER = "#373b47"      # Input border
 
-ACCENT_BLUE = "#0071e3"
-ACCENT_BLUE_HOVER = "#0077ed"
+# Micro-Bevels & Dual-Layer Borders
+BORDER_SUBTLE = "rgba(255, 255, 255, 0.08)"
+BORDER_CARD = "rgba(255, 255, 255, 0.10)"
+BORDER_HIGHLIGHT = "rgba(255, 255, 255, 0.18)"
+
+# Typography (High Legibility, No Murkiness)
+TEXT_PRIMARY = "#f9fafb"      # Crisp off-white (headings, titles, active text)
+TEXT_SECONDARY = "#9ca3af"    # Neutral silver gray (body, labels)
+TEXT_MUTED = "#6e7686"        # Subtle slate gray (eyebrows, placeholders)
+TEXT_MONO = "#d1d5db"         # Tabular numbers, timecodes, metrics
+
+# Functional Accents (Restrained Apple Palette)
+ACCENT_BLUE = "#0071e3"       # Apple Electric Blue (Primary CTA, focus rings)
+ACCENT_BLUE_HOVER = "#0a84ff"
 ACCENT_BLUE_PRESSED = "#005bb5"
-ACCENT_AMBER = "#f59e0b"
-ACCENT_GREEN = "#30d158"
-ACCENT_RED = "#ff453a"
+ACCENT_AMBER = "#f59e0b"      # Warm amber (warnings, credits)
+ACCENT_GREEN = "#30d158"      # Apple green (success, readiness)
+ACCENT_RED = "#ff453a"        # Apple red (destructive, errors)
 
-RADIUS_SM = 6
-RADIUS_MD = 8
-RADIUS_LG = 12
+# Radii System (Apple HIG Disciplined Standards)
+RADIUS_SM = 6                 # Inputs, badges, chips, small buttons
+RADIUS_MD = 8                 # Cards, panels, dropdowns
+RADIUS_LG = 12                # Modals, floating popovers
 
 FONT_STACK = (
     '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", '
@@ -85,7 +89,7 @@ QLabel.eyebrow {{
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
+    letter-spacing: 1.1px;
     background: transparent;
 }}
 
@@ -99,10 +103,9 @@ QLabel.mono, QLabel[class~="mono"] {{
 
 /* Kbd Shortcut Badge */
 QLabel.kbdBadge {{
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(255, 255, 255, 0.06);
     color: {TEXT_MUTED};
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-bottom-color: rgba(255, 255, 255, 0.18);
     border-radius: 4px;
     padding: 1px 5px;
     font-family: {FONT_MONO};
@@ -121,38 +124,36 @@ QPushButton.navBtn {{
     color: {TEXT_SECONDARY};
     border: 1px solid transparent;
     border-radius: {RADIUS_SM}px;
-    padding: 7px 12px;
+    padding: 8px 12px;
     font-weight: 500;
     font-size: 13px;
     text-align: left;
 }}
 
 QPushButton.navBtn:hover {{
-    background-color: rgba(255, 255, 255, 0.06);
+    background-color: rgba(255, 255, 255, 0.05);
     color: {TEXT_PRIMARY};
 }}
 
 QPushButton.navBtn:checked,
 QPushButton.navBtn[active="true"] {{
-    background-color: rgba(255, 255, 255, 0.10);
+    background-color: {CARD_BG};
     color: {TEXT_PRIMARY};
-    border: 1px solid {BORDER_HIGHLIGHT};
+    border: 1px solid {BORDER_CARD};
     font-weight: 600;
 }}
 
 QPushButton.navBtn:pressed {{
-    background-color: rgba(255, 255, 255, 0.04);
-    padding-top: 8px;
-    padding-bottom: 6px;
+    background-color: rgba(255, 255, 255, 0.03);
 }}
 
-/* Top Glass Header Bar */
+/* Top Header Bar */
 QFrame#topHeader, QFrame#topBar {{
     background-color: {TOPBAR_BG};
     border-bottom: 1px solid {BORDER_SUBTLE};
 }}
 
-/* Cards & Surfaces (8px radii, subtle borders) */
+/* Cards & Surfaces (8px radii, subtle micro-bevel borders) */
 QFrame.card {{
     background-color: {CARD_BG};
     border: 1px solid {BORDER_CARD};
@@ -165,12 +166,11 @@ QFrame.subcard {{
     border-radius: {RADIUS_MD}px;
 }}
 
-/* Hardware Bevel Buttons */
+/* Pro Desktop Buttons */
 QPushButton {{
-    background-color: #1a1e24;
+    background-color: {CARD_ELEVATED_BG};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_CARD};
-    border-top: 1px solid {BORDER_HIGHLIGHT};
     border-radius: {RADIUS_SM}px;
     padding: 6px 14px;
     font-weight: 500;
@@ -178,21 +178,18 @@ QPushButton {{
 }}
 
 QPushButton:hover {{
-    background-color: #222730;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    border-top: 1px solid rgba(255, 255, 255, 0.24);
+    background-color: {CARD_HOVER_BG};
+    border: 1px solid {BORDER_HIGHLIGHT};
     color: #ffffff;
 }}
 
 QPushButton:pressed {{
-    background-color: #121519;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    padding-top: 7px;
-    padding-bottom: 5px;
+    background-color: {INPUT_BG};
+    border: 1px solid {BORDER_SUBTLE};
 }}
 
 QPushButton:disabled {{
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: rgba(255, 255, 255, 0.02);
     color: rgba(255, 255, 255, 0.25);
     border: 1px solid rgba(255, 255, 255, 0.04);
 }}
@@ -201,8 +198,7 @@ QPushButton:disabled {{
 QPushButton.primary {{
     background-color: {ACCENT_BLUE};
     color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    border-top: 1px solid rgba(255, 255, 255, 0.40);
+    border: 1px solid rgba(255, 255, 255, 0.20);
     border-radius: {RADIUS_SM}px;
     padding: 7px 16px;
     font-weight: 600;
@@ -210,27 +206,24 @@ QPushButton.primary {{
 
 QPushButton.primary:hover {{
     background-color: {ACCENT_BLUE_HOVER};
-    border: 1px solid rgba(255, 255, 255, 0.30);
+    border: 1px solid rgba(255, 255, 255, 0.35);
 }}
 
 QPushButton.primary:pressed {{
     background-color: {ACCENT_BLUE_PRESSED};
-    padding-top: 8px;
-    padding-bottom: 6px;
 }}
 
 QPushButton.primary:disabled {{
-    background-color: rgba(0, 113, 227, 0.25);
+    background-color: rgba(0, 113, 227, 0.20);
     color: rgba(255, 255, 255, 0.40);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }}
 
-/* Apple Green Secondary / Success Action */
+/* Success Button */
 QPushButton.success {{
     background-color: {ACCENT_GREEN};
-    color: #051608;
+    color: #04210a;
     border: 1px solid rgba(255, 255, 255, 0.25);
-    border-top: 1px solid rgba(255, 255, 255, 0.45);
     border-radius: {RADIUS_SM}px;
     padding: 7px 16px;
     font-weight: 600;
@@ -243,13 +236,11 @@ QPushButton.success:hover {{
 
 QPushButton.success:pressed {{
     background-color: #24a845;
-    padding-top: 8px;
-    padding-bottom: 6px;
 }}
 
-/* Restrained Hardware Chips (6px radius) */
+/* Hardware Chips (6px radius) */
 QPushButton.chip {{
-    background-color: #161920;
+    background-color: {CARD_BG};
     color: {TEXT_SECONDARY};
     border: 1px solid {BORDER_CARD};
     border-radius: {RADIUS_SM}px;
@@ -259,23 +250,20 @@ QPushButton.chip {{
 }}
 
 QPushButton.chip:hover {{
-    background-color: #1e222b;
-    border-color: rgba(255, 255, 255, 0.18);
+    background-color: {CARD_ELEVATED_BG};
+    border-color: {BORDER_HIGHLIGHT};
     color: {TEXT_PRIMARY};
 }}
 
 QPushButton.chip:pressed {{
-    background-color: #0f1115;
-    padding-top: 5px;
-    padding-bottom: 3px;
+    background-color: {INPUT_BG};
 }}
 
-/* Form Inputs & LineEdits (6px radius, micro-bevel) */
+/* Form Inputs & LineEdits */
 QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QDateEdit {{
     background-color: {INPUT_BG};
     color: {TEXT_PRIMARY};
-    border: 1px solid {BORDER_CARD};
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid {INPUT_BORDER};
     border-radius: {RADIUS_SM}px;
     padding: 6px 10px;
     font-size: 12.5px;
@@ -306,11 +294,12 @@ QComboBox QAbstractItemView {{
     border: 1px solid {BORDER_HIGHLIGHT};
     color: {TEXT_PRIMARY};
     selection-background-color: {ACCENT_BLUE};
+    selection-color: #ffffff;
     border-radius: {RADIUS_MD}px;
     padding: 4px;
 }}
 
-/* Tab Widget (Native macOS Segmented Tab Style) */
+/* Tab Widget (Clean macOS Segmented Tab Style) */
 QTabWidget::pane {{
     border: 1px solid {BORDER_CARD};
     border-radius: {RADIUS_MD}px;
@@ -322,7 +311,7 @@ QTabBar::tab {{
     background-color: transparent;
     color: {TEXT_SECONDARY};
     border: none;
-    padding: 6px 14px;
+    padding: 7px 14px;
     font-size: 12px;
     font-weight: 500;
     border-bottom: 2px solid transparent;
@@ -336,7 +325,7 @@ QTabBar::tab:selected {{
 
 QTabBar::tab:hover:!selected {{
     color: {TEXT_PRIMARY};
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: rgba(255, 255, 255, 0.03);
 }}
 
 /* Tables & Lists */
@@ -345,12 +334,12 @@ QTableWidget, QListWidget {{
     alternate-background-color: rgba(255, 255, 255, 0.02);
     border: 1px solid {BORDER_CARD};
     border-radius: {RADIUS_MD}px;
-    gridline-color: rgba(255, 255, 255, 0.05);
+    gridline-color: rgba(255, 255, 255, 0.04);
     color: {TEXT_PRIMARY};
 }}
 
 QHeaderView::section {{
-    background-color: #171a21;
+    background-color: {SIDEBAR_BG};
     color: {TEXT_MUTED};
     border: none;
     border-bottom: 1px solid {BORDER_CARD};
@@ -361,9 +350,9 @@ QHeaderView::section {{
     letter-spacing: 0.8px;
 }}
 
-/* Native Progress Bar */
+/* Progress Bar */
 QProgressBar {{
-    background-color: #121419;
+    background-color: {INPUT_BG};
     border: 1px solid {BORDER_CARD};
     border-radius: 4px;
     height: 6px;
@@ -379,7 +368,7 @@ QProgressBar::chunk {{
 /* Sliders */
 QSlider::groove:horizontal {{
     height: 4px;
-    background: #1e2229;
+    background: {CARD_ELEVATED_BG};
     border-radius: 2px;
 }}
 
@@ -407,18 +396,18 @@ QScrollArea {{
 QScrollBar:vertical {{
     border: none;
     background: transparent;
-    width: 8px;
+    width: 7px;
     margin: 2px;
 }}
 
 QScrollBar::handle:vertical {{
-    background: rgba(255, 255, 255, 0.16);
-    min-height: 28px;
-    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.14);
+    min-height: 24px;
+    border-radius: 3px;
 }}
 
 QScrollBar::handle:vertical:hover {{
-    background: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.24);
 }}
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
@@ -428,14 +417,14 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 QScrollBar:horizontal {{
     border: none;
     background: transparent;
-    height: 8px;
+    height: 7px;
     margin: 2px;
 }}
 
 QScrollBar::handle:horizontal {{
-    background: rgba(255, 255, 255, 0.16);
-    min-width: 28px;
-    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.14);
+    min-width: 24px;
+    border-radius: 3px;
 }}
 
 /* Splitters */
