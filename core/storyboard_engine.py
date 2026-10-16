@@ -38,7 +38,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 
-FAL_WAN_ENDPOINT = "fal-ai/wan-t2v"
+FAL_WAN_T2V_ENDPOINT = "fal-ai/wan-t2v"
+FAL_WAN_I2V_ENDPOINT = "fal-ai/wan-i2v"
+FAL_WAN_NEGATIVE_PROMPT = "blurry, low quality, jpeg artifacts, deformed, extra limbs, subtitles, text, watermark, flicker"
 _INFLIGHT_CLIPS: set = set()
 _INFLIGHT_LOCK = threading.Lock()
 
@@ -712,8 +714,9 @@ class AIStoryboardEngine:
     ) -> Tuple[bool, Optional[str]]:
         """Generate a vertical (9:16, TikTok/Reels/Shorts) AI clip via fal.ai Wan text-to-video.
 
-        Only the clean scene prompt is sent (no chat history / system prompt). Wan t2v is
-        text-only, so frame-conditioning and multi-turn args are accepted but ignored.
+        Only the clean scene prompt is sent (no chat history / system prompt). When a keyframe exists it uses
+        Wan image-to-video (keyframe = first frame) so the project style stays consistent; otherwise
+        text-to-video. Last-frame and multi-turn args are accepted but ignored.
         Wan caps clips at 100 frames (~6s @16fps); the compositor loops/trims as needed.
         Duplicate in-flight requests for the same output clip are rejected.
         """
@@ -744,16 +747,22 @@ class AIStoryboardEngine:
                 progress_callback(
                     f"[Wan] Generating {num_frames / fps:.1f}s {self.video_resolution} {self.video_aspect_ratio} video..."
                 )
-            result = fal_client.subscribe(
-                FAL_WAN_ENDPOINT,
-                arguments={
-                    "prompt": scene_prompt.strip()[:950],
-                    "num_frames": num_frames,
-                    "frames_per_second": fps,
-                    "resolution": self.video_resolution,
-                    "aspect_ratio": self.video_aspect_ratio,
-                },
-            )
+            args: Dict[str, Any] = {
+                "prompt": scene_prompt.strip()[:950],
+                "num_frames": num_frames,
+                "frames_per_second": fps,
+                "resolution": self.video_resolution,
+                "aspect_ratio": self.video_aspect_ratio,
+            }
+            endpoint = FAL_WAN_T2V_ENDPOINT
+            if start_image_path and os.path.exists(start_image_path):
+                # Image-to-video: animate the styled keyframe so style stays consistent.
+                args["image_url"] = fal_client.upload_file(start_image_path)
+                # fal's default negative prompt contains "style, artwork, painting", which
+                # fights stylized (Pixar/cartoon) keyframes -- override it.
+                args["negative_prompt"] = FAL_WAN_NEGATIVE_PROMPT
+                endpoint = FAL_WAN_I2V_ENDPOINT
+            result = fal_client.subscribe(endpoint, arguments=args)
             url = (result.get("video") or {}).get("url")
             if url:
                 resp = requests.get(url, timeout=300)
