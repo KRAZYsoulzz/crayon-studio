@@ -325,7 +325,7 @@ def modify_script(
 
             client = genai.Client(
                 api_key=resolved_key,
-                http_options=types.HttpOptions(timeout=45_000, retry_options=types.HttpRetryOptions(attempts=1)),
+                http_options=types.HttpOptions(timeout=15, retry_options=types.HttpRetryOptions(attempts=1)),
             )
 
             if not existing:

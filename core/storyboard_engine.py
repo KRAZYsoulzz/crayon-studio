@@ -207,7 +207,7 @@ class AIStoryboardEngine:
                 from google.genai import types
                 client = genai.Client(
                     api_key=self.gemini_api_key,
-                    http_options=types.HttpOptions(timeout=20_000, retry_options=types.HttpRetryOptions(attempts=1)),
+                    http_options=types.HttpOptions(timeout=15, retry_options=types.HttpRetryOptions(attempts=1)),
                 )
                 img_part = self._encode_image_part(style_image_path)
                 if img_part:
@@ -393,7 +393,7 @@ class AIStoryboardEngine:
                 from google.genai import types
                 client = genai.Client(
                     api_key=self.gemini_api_key,
-                    http_options=types.HttpOptions(timeout=25_000, retry_options=types.HttpRetryOptions(attempts=1)),
+                    http_options=types.HttpOptions(timeout=15, retry_options=types.HttpRetryOptions(attempts=1)),
                 )
                 excerpts = [sc.get("script_excerpt", "") for sc in scenes]
                 rev_directive = (
@@ -636,7 +636,7 @@ class AIStoryboardEngine:
                 from google.genai import types
                 client = genai.Client(
                     api_key=self.gemini_api_key,
-                    http_options=types.HttpOptions(timeout=30_000, retry_options=types.HttpRetryOptions(attempts=1)),
+                    http_options=types.HttpOptions(timeout=20, retry_options=types.HttpRetryOptions(attempts=1)),
                 )
                 clean_prompt = prompt[:950]
 
