@@ -37,14 +37,14 @@ class GlassCard(QFrame):
         path = QPainterPath()
         path.addRoundedRect(rect, self.radius, self.radius)
 
-        # Frosted glass vertical gradient fill
+        # Refined middle-ground slate surface gradient
         grad = QLinearGradient(rect.topLeft(), rect.bottomLeft())
         if self.elevated:
-            grad.setColorAt(0.0, QColor(42, 46, 60, 215))
-            grad.setColorAt(1.0, QColor(28, 31, 42, 205))
+            grad.setColorAt(0.0, QColor(50, 56, 70, 240))
+            grad.setColorAt(1.0, QColor(42, 48, 60, 235))
         else:
-            grad.setColorAt(0.0, QColor(32, 35, 46, 195))
-            grad.setColorAt(1.0, QColor(22, 24, 33, 185))
+            grad.setColorAt(0.0, QColor(44, 49, 62, 230))
+            grad.setColorAt(1.0, QColor(36, 41, 52, 225))
 
         painter.fillPath(path, grad)
 
