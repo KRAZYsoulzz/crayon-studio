@@ -2,7 +2,7 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QPlainTextEdit, QComboBox, QSpinBox,
-    QSplitter, QProgressBar, QFileDialog, QScrollArea
+    QSplitter, QProgressBar, QFileDialog, QScrollArea, QFrame
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCursor
