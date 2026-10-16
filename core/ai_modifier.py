@@ -22,7 +22,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 # Script models, tried in order (Google sometimes returns 503 for individual models).
-SCRIPT_MODELS = ("gemini-3.8-flash", "gemini-3.5-flash")
+SCRIPT_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash")
 _LAST_AI_STATUS: str = "OK"
 
 
