@@ -198,11 +198,11 @@ class CrayonStudioWindow(QMainWindow):
 
         content_h.addWidget(nav_rail)
 
-        # 2. Center Column: Top Glass Header Bar + Workspace Stack
-        center_col = QWidget()
-        center_v = QVBoxLayout(center_col)
-        center_v.setContentsMargins(0, 0, 0, 0)
-        center_v.setSpacing(0)
+        # 2. Main Right Content: Full-Width Top Bar + Splitter (Workspace | Phone Dock)
+        main_content_widget = QWidget()
+        main_content_v = QVBoxLayout(main_content_widget)
+        main_content_v.setContentsMargins(0, 0, 0, 0)
+        main_content_v.setSpacing(0)
 
         top_bar = QFrame()
         top_bar.setObjectName("topBar")
@@ -219,7 +219,7 @@ class CrayonStudioWindow(QMainWindow):
         self.usage_pill = LiveUsagePill(usage_tracker)
         tb_layout.addWidget(self.usage_pill)
 
-        center_v.addWidget(top_bar)
+        main_content_v.addWidget(top_bar)
 
         self.workspace_stack = QStackedWidget()
         self.studio_view = StudioView()
@@ -231,21 +231,21 @@ class CrayonStudioWindow(QMainWindow):
         self.workspace_stack.addWidget(self.research_view)
         self.workspace_stack.addWidget(self.calendar_view)
         self.workspace_stack.addWidget(self.settings_view)
-        center_v.addWidget(self.workspace_stack, stretch=1)
 
         # Main Work Area Splitter: Center Workspaces | Right Phone Preview Dock
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setHandleWidth(2)
         self.main_splitter.setChildrenCollapsible(False)
-        self.main_splitter.addWidget(center_col)
+        self.main_splitter.addWidget(self.workspace_stack)
 
-        # 3. Persistent Right 9:16 Phone Preview & Publish Dock
+        # 3. Persistent Right 9:16 Phone Preview & Publish Dock (placed underneath top_bar)
         self.player_dock = PlayerInspectorDock()
         self.main_splitter.addWidget(self.player_dock)
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 0)
 
-        content_h.addWidget(self.main_splitter, stretch=1)
+        main_content_v.addWidget(self.main_splitter, stretch=1)
+        content_h.addWidget(main_content_widget, stretch=1)
 
         self._connect_signals()
         self.switch_nav(0)

@@ -207,7 +207,7 @@ class AIStoryboardEngine:
                 from google.genai import types
                 client = genai.Client(
                     api_key=self.gemini_api_key,
-                    http_options=types.HttpOptions(timeout=15, retry_options=types.HttpRetryOptions(attempts=1)),
+                    http_options=types.HttpOptions(timeout=30000, retry_options=types.HttpRetryOptions(attempts=2)),
                 )
                 img_part = self._encode_image_part(style_image_path)
                 if img_part:
@@ -222,6 +222,7 @@ class AIStoryboardEngine:
                                 model=m_name,
                                 input=[img_part, {"type": "text", "text": prompt}],
                                 store=False,
+                                timeout=60.0,
                             )
                             break
                         except Exception:
@@ -393,7 +394,7 @@ class AIStoryboardEngine:
                 from google.genai import types
                 client = genai.Client(
                     api_key=self.gemini_api_key,
-                    http_options=types.HttpOptions(timeout=15, retry_options=types.HttpRetryOptions(attempts=1)),
+                    http_options=types.HttpOptions(timeout=30000, retry_options=types.HttpRetryOptions(attempts=2)),
                 )
                 excerpts = [sc.get("script_excerpt", "") for sc in scenes]
                 rev_directive = (
@@ -431,6 +432,7 @@ class AIStoryboardEngine:
                             model=m_name,
                             input=prompt_ai,
                             store=False,
+                            timeout=60.0,
                             response_format={
                                 "type": "text",
                                 "mime_type": "application/json",
@@ -636,7 +638,7 @@ class AIStoryboardEngine:
                 from google.genai import types
                 client = genai.Client(
                     api_key=self.gemini_api_key,
-                    http_options=types.HttpOptions(timeout=20, retry_options=types.HttpRetryOptions(attempts=1)),
+                    http_options=types.HttpOptions(timeout=60000, retry_options=types.HttpRetryOptions(attempts=2)),
                 )
                 clean_prompt = prompt[:950]
 
