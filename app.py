@@ -58,6 +58,15 @@ from PySide6.QtWidgets import (
 # Core imports
 from core.ai_modifier import modify_script
 from core.audio_generator import generate_voiceover
+from core.duration_guard import (
+    MIN_PUBLISH_SECONDS,
+    estimate_spoken_seconds,
+    probe_wav_duration,
+    render_voiceover_until_publishable,
+    words_required,
+)
+from core.layout_policy import split_widths
+from core.visual_costs import MODE_LABELS, cost_summary_line
 from core.blender_orchestrator import BlenderOrchestrator
 from core.engine_router import VisualEngineRouter
 from core.ffmpeg_compositor import FFmpegCompositor
@@ -89,7 +98,10 @@ def load_app_config() -> Dict[str, Any]:
         "ffmpeg_path": "ffmpeg.exe",
         "default_voice": "af_heart",
         "speech_speed": 1.05,
-        "target_duration": 65,
+        "target_duration": 69,
+        "visual_source": "hybrid_stock",
+        "pexels_api_key": "",
+        "pixabay_api_key": "",
         "dry_run_mode": True,
         "youtube_api_key": "",
     }
@@ -188,7 +200,6 @@ QFrame.card {
     background-color: #1E1E1E;
     border: 1px solid #2D2D2D;
     border-radius: 8px;
-    padding: 14px;
 }
 
 /* Buttons */
@@ -468,12 +479,52 @@ class PipelineWorker(QThread):
                 )
             self.log_message.emit(f"✓ Project synced (ID: {proj_id}, Engine: {self.visual_engine})")
 
-            # 3. Audio Synthesis (Kokoro-82M Local TTS)
-            self.log_message.emit(f"🎙️ Synthesizing voiceover with Kokoro-82M [Voice: {self.voice}, Speed: {self.speed}x]...")
+            # 3. Audio Synthesis, measured against the monetization floor.
+            # Word count is budgeted from the neural rate first. If the wav
+            # is still short, the script is extended and synthesized again.
+            self.log_message.emit(
+                f"🎙️ Synthesizing voiceover [Voice: {self.voice}, Speed: {self.speed}x, "
+                f"target {self.duration_target}s]..."
+            )
             self.progress_val.emit(45)
             vo_path = os.path.join(proj_dir, "voiceover.wav")
-            generate_voiceover(self.script_text, vo_path, voice=self.voice, speed=self.speed)
-            self.log_message.emit(f"✓ Clean 24kHz Voiceover generated: {vo_path}")
+            needed = words_required(self.duration_target, speed=self.speed, voice=self.voice)
+            self.log_message.emit(
+                f"Script budget: {needed} words for {self.duration_target}s "
+                f"at this voice (the 145 WPM meter was short by about a third)."
+            )
+
+            def _synthesize(text: str, path: str, voice: str, speed: float) -> float:
+                generate_voiceover(text, path, voice=voice, speed=speed)
+                return probe_wav_duration(path)
+
+            self.script_text, total_dur, speed_used = render_voiceover_until_publishable(
+                self.script_text,
+                vo_path,
+                voice=self.voice,
+                speed=self.speed,
+                target_seconds=float(self.duration_target),
+                topic=self.title,
+                synthesize=_synthesize,
+            )
+            self.speed = speed_used
+            with open(os.path.join(proj_dir, "script.txt"), "w", encoding="utf-8") as f:
+                f.write(self.script_text)
+            db.update_project(
+                project_id=proj_id,
+                title=self.title,
+                hook=self.hook,
+                category=self.category,
+                script_text=self.script_text,
+                duration_target=self.duration_target,
+                tiktok_product=self.tiktok_product,
+                status="Draft",
+                visual_engine=self.visual_engine,
+            )
+            self.log_message.emit(
+                f"✓ Voiceover {total_dur:.1f}s ({len(self.script_text.split())} words) — "
+                f"clears the {MIN_PUBLISH_SECONDS:.0f}s floor."
+            )
 
             # 4. Word-Level Timestamp Extraction (faster-whisper)
             self.log_message.emit("⏱️ Extracting word-level timestamps with faster-whisper...")
@@ -482,8 +533,9 @@ class PipelineWorker(QThread):
             words_list = extract_word_timestamps(vo_path, words_json_path, script_text=self.script_text)
             self.log_message.emit(f"✓ Aligned {len(words_list)} words saved to: {words_json_path}")
 
-            # Calculate actual audio duration from word timestamps or soundfile
-            total_dur = words_list[-1]["end"] if words_list else float(self.duration_target)
+            # The wav is the clock. The last word timestamp ends early and
+            # used to become the video length.
+            total_dur = probe_wav_duration(vo_path)
 
             # 5. ASMR / Mechanical Foley Generation
             foley_desc = "procedural mechanical transients" if self.visual_engine == "3D_Teardown" else "synchronized crayon scribbles and ASMR paper friction"
@@ -536,6 +588,7 @@ class BlenderRenderWorker(QThread):
         visual_engine: str = "2D_Crayon",
         style_reference_path: Optional[str] = None,
         enable_omni_video: bool = False,
+        visual_source: str = "hybrid_stock",
     ):
         super().__init__()
         self.project_slug = project_slug
@@ -546,6 +599,7 @@ class BlenderRenderWorker(QThread):
         self.visual_engine = visual_engine
         self.style_reference_path = style_reference_path
         self.enable_omni_video = enable_omni_video
+        self.visual_source = visual_source
 
     def run(self):
         try:
@@ -579,6 +633,7 @@ class BlenderRenderWorker(QThread):
                 script_text=self.script_text,
                 style_reference_path=self.style_reference_path,
                 enable_omni_video=self.enable_omni_video,
+                visual_source=self.visual_source,
                 progress_callback=lambda msg: self.log_message.emit(msg),
             )
 
@@ -612,8 +667,10 @@ class VerticalPreviewCanvas(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(280, 500)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # No hard minimum: a minimum wider than the leftover column is what
+        # let the preview paint over the checklist. The splitter assigns width.
+        self.setMinimumSize(0, 0)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.title_text = "CrayonStudio Vertical Player"
         self.hook_text = "Watch what happens next..."
         self.category = "STEM"
@@ -658,6 +715,12 @@ class VerticalPreviewCanvas(QWidget):
                     })
                     current_block = []
         self.update()
+
+    def sizeHint(self):
+        return QSize(280, 500)
+
+    def minimumSizeHint(self):
+        return QSize(0, 0)
 
     def update_metadata(self, title: str, hook: str, category: str):
         self.title_text = title
@@ -831,7 +894,12 @@ class CrayonStudioApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CrayonStudio — Viral Short-Form Video Studio (Phase 1)")
-        self.setMinimumSize(1280, 800)
+        # A fixed 1280px floor did not stop the overlap: the preview's minimum
+        # plus the checklist's minimum already exceeded the client area, and
+        # card padding painted outside the layout cells. The floor below is
+        # only a comfort size. The splitter collapses the preview below it.
+        self.setMinimumSize(960, 680)
+        self._preview_user_choice = True
 
         # State
         self.config = load_app_config()
@@ -854,6 +922,47 @@ class CrayonStudioApp(QMainWindow):
         self._wire_player_events()
         self._load_saved_settings_to_ui()
         self.refresh_calendar()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_preview_columns()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._apply_preview_columns()
+
+    def _on_toggle_phone_preview(self):
+        self._preview_user_choice = self.btn_toggle_preview.isChecked()
+        self._apply_preview_columns()
+
+    def _apply_preview_columns(self):
+        """Give the checklist the width it needs and collapse the phone when it would cover it."""
+        splitter = getattr(self, "player_splitter", None)
+        if splitter is None:
+            return
+        width = splitter.width()
+        if width < 80:
+            width = max(0, self.width() - 48)
+        content_w, preview_w = split_widths(width, self._preview_user_choice)
+        splitter.setSizes([max(0, content_w), max(0, preview_w)])
+        shown = preview_w > 0
+        button = getattr(self, "btn_toggle_preview", None)
+        if button is None:
+            return
+        button.blockSignals(True)
+        button.setChecked(shown)
+        if shown:
+            button.setText("Hide Phone Preview")
+        elif self._preview_user_choice:
+            button.setText("Phone preview hidden — widen the window")
+        else:
+            button.setText("Show Phone Preview")
+        button.blockSignals(False)
+
+    def _on_visual_source_changed(self):
+        mode = self.combo_visual_source.currentData() or "hybrid_stock"
+        self.config["visual_source"] = mode
+        self.status_bar.showMessage(f"Picture source: {cost_summary_line(mode)}", 4000)
 
     def _init_database(self):
         """Ensure SQLite schema is ready."""
@@ -1083,6 +1192,10 @@ class CrayonStudioApp(QMainWindow):
     # TAB 2: PRODUCTION STUDIO
     # =================================================================
     def _build_tab_studio(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -1111,9 +1224,10 @@ class CrayonStudioApp(QMainWindow):
         mc_layout.addWidget(QLabel("Target Duration:"), 1, 0)
         dur_layout = QHBoxLayout()
         self.spin_duration = QSpinBox()
-        self.spin_duration.setRange(30, 180)
-        self.spin_duration.setValue(65)
+        self.spin_duration.setRange(60, 180)
+        self.spin_duration.setValue(69)
         self.spin_duration.setSuffix(" seconds")
+        self.spin_duration.valueChanged.connect(self._on_script_text_changed)
         dur_layout.addWidget(self.spin_duration)
         mc_layout.addLayout(dur_layout, 1, 1)
 
@@ -1164,18 +1278,23 @@ class CrayonStudioApp(QMainWindow):
         self.tab2_spin_speed.setSingleStep(0.05)
         self.tab2_spin_speed.setValue(1.00)
         self.tab2_spin_speed.setSuffix("x (1.00 = Natural Human Flow)")
+        self.tab2_spin_speed.valueChanged.connect(self._on_script_text_changed)
+        self.tab2_combo_voice.currentIndexChanged.connect(self._on_script_text_changed)
         mc_layout.addWidget(self.tab2_spin_speed, 4, 3)
 
-        # Row 5: AI Video Generation Mode Checkbox
-        mc_layout.addWidget(QLabel("AI Video Mode:"), 5, 0)
-        self.chk_omni_video = QCheckBox("Generate Full Generative AI Video via Gemini Omni / Veo (~$15-$20 API credits)")
-        self.chk_omni_video.setChecked(False)
-        self.chk_omni_video.setStyleSheet("color: #FFB74D; font-weight: bold;")
-        self.chk_omni_video.setToolTip(
-            "Unchecked (Recommended): High-speed 2.5D Cinematic Animation (~$0.00-$0.10, unlimited, zero credit drain).\n"
-            "Checked: Generates raw video with Gemini Omni Flash / Veo (~$15-$20/video)."
-        )
-        mc_layout.addWidget(self.chk_omni_video, 5, 1, 1, 3)
+        # Row 5: Picture source. Generative video stays available; hybrid is the default
+        # because stock clips of "a watch" do not show a tuning fork.
+        mc_layout.addWidget(QLabel("Picture Source:"), 5, 0)
+        self.combo_visual_source = QComboBox()
+        for mode_id, label in MODE_LABELS.items():
+            self.combo_visual_source.addItem(f"{label} ({cost_summary_line(mode_id)})", mode_id)
+        saved_source = self.config.get("visual_source", "hybrid_stock")
+        source_idx = self.combo_visual_source.findData(saved_source)
+        if source_idx < 0:
+            source_idx = 0
+        self.combo_visual_source.setCurrentIndex(source_idx)
+        self.combo_visual_source.currentIndexChanged.connect(self._on_visual_source_changed)
+        mc_layout.addWidget(self.combo_visual_source, 5, 1, 1, 3)
 
         layout.addWidget(meta_card)
 
@@ -1188,7 +1307,7 @@ class CrayonStudioApp(QMainWindow):
         metrics_layout = QHBoxLayout()
         metrics_title = QLabel("Script Drafting Canvas (Voiceover & Timings)")
         metrics_title.setStyleSheet("font-weight: bold; font-size: 14px; color: #FFFFFF;")
-        self.lbl_script_metrics = QLabel("Words: 0 | Est. Spoken Time: 0.0s (Target: 65s)")
+        self.lbl_script_metrics = QLabel("Words: 0 | Est. Spoken Time: 0.0s (Target: 69s)")
         self.lbl_script_metrics.setStyleSheet("color: #0078D4; font-weight: bold;")
         metrics_layout.addWidget(metrics_title)
         metrics_layout.addStretch()
@@ -1290,18 +1409,39 @@ class CrayonStudioApp(QMainWindow):
 
         # Initial metrics calculation
         self._on_script_text_changed()
-        return widget
+        scroll.setWidget(widget)
+        return scroll
 
     # =================================================================
     # TAB 3: VIDEO PLAYER & VIRAL CHECKLIST
     # =================================================================
     def _build_tab_player(self) -> QWidget:
         widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(14)
+        outer = QVBoxLayout(widget)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(8)
 
-        # Left Column: Vertical 9:16 Player Card
+        toolbar = QHBoxLayout()
+        self.btn_toggle_preview = QPushButton("Hide Phone Preview")
+        self.btn_toggle_preview.setCheckable(True)
+        self.btn_toggle_preview.setChecked(True)
+        self.btn_toggle_preview.clicked.connect(self._on_toggle_phone_preview)
+        preview_hint = QLabel(
+            "The phone preview sits on the right and hides itself when the window is narrow, so it cannot cover the checklist."
+        )
+        preview_hint.setWordWrap(True)
+        preview_hint.setStyleSheet("color: #9AA0A6; font-size: 11px;")
+        toolbar.addWidget(self.btn_toggle_preview)
+        toolbar.addWidget(preview_hint, stretch=1)
+        outer.addLayout(toolbar)
+
+        self.player_splitter = QSplitter(Qt.Horizontal)
+        self.player_splitter.setChildrenCollapsible(True)
+        self.player_splitter.setHandleWidth(8)
+        self.player_splitter.setStyleSheet("QSplitter::handle { background: #2D2D2D; }")
+
+        # Phone preview. It is the trailing splitter column so a narrow window
+        # can collapse it instead of letting it cover the checklist.
         player_card = QFrame()
         player_card.setProperty("class", "card")
         pc_layout = QVBoxLayout(player_card)
@@ -1386,7 +1526,8 @@ class CrayonStudioApp(QMainWindow):
         tc_layout.addLayout(exp_row)
 
         pc_layout.addWidget(trans_card)
-        layout.addWidget(player_card, stretch=4)
+        player_card.setMinimumWidth(0)
+        player_card.setMaximumWidth(360)
 
         # Right Column: Viral Checklist & Metadata Review Card
         review_card = QFrame()
@@ -1459,7 +1600,7 @@ class CrayonStudioApp(QMainWindow):
         self.chk_frame1 = QCheckBox("Frame 1 Visual Incomplete (Curiosity Gap within 3s)")
         self.chk_loop_check = QCheckBox("Seamless Audio Loop (Ending hooks into opening line)")
         self.chk_friction = QCheckBox("Comment Friction Trigger (Sparks viewer debate/questions)")
-        self.chk_duration = QCheckBox("Duration 61s-75s (Algorithm boost & TikTok Creator Rewards)")
+        self.chk_duration = QCheckBox("Duration 60s+ (monetization length)")
         self.chk_foley = QCheckBox("ASMR Foley Level Balanced (Crayon scrub audible & crisp)")
 
         checklist_items = [
@@ -1539,7 +1680,24 @@ class CrayonStudioApp(QMainWindow):
         act_box.addLayout(dispatch_row)
         rc_layout.addLayout(act_box)
 
-        layout.addWidget(review_card, stretch=5)
+        content_scroll = QScrollArea()
+        content_scroll.setWidgetResizable(True)
+        content_scroll.setFrameShape(QFrame.NoFrame)
+        content_scroll.setMinimumWidth(0)
+        content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        review_card.setMinimumWidth(0)
+        content_scroll.setWidget(review_card)
+
+        # Checklist is the leading column. The phone preview is the trailing
+        # column and is collapsible, so a narrow window cannot paint it over
+        # the checklist.
+        self.player_splitter.addWidget(content_scroll)
+        self.player_splitter.addWidget(player_card)
+        self.player_splitter.setStretchFactor(0, 3)
+        self.player_splitter.setStretchFactor(1, 1)
+        self.player_splitter.setCollapsible(0, False)
+        self.player_splitter.setCollapsible(1, True)
+        outer.addWidget(self.player_splitter, stretch=1)
         return widget
 
     # =================================================================
@@ -1652,8 +1810,8 @@ class CrayonStudioApp(QMainWindow):
         # Default Target Duration
         sc_layout.addWidget(QLabel("Default Target Duration:"), 6, 0)
         self.spin_default_duration = QSpinBox()
-        self.spin_default_duration.setRange(30, 180)
-        self.spin_default_duration.setValue(65)
+        self.spin_default_duration.setRange(60, 180)
+        self.spin_default_duration.setValue(69)
         self.spin_default_duration.setSuffix("s")
         sc_layout.addWidget(self.spin_default_duration, 6, 1)
 
@@ -1678,6 +1836,18 @@ class CrayonStudioApp(QMainWindow):
         self.input_gemini_key.setPlaceholderText("Paste Gemini API key for Imagen 3 & Vision analysis (or leave blank for free Flux)")
         sc_layout.addWidget(self.input_gemini_key, 9, 1, 1, 2)
 
+        sc_layout.addWidget(QLabel("Pexels API Key (free stock):"), 12, 0)
+        self.input_pexels_key = QLineEdit()
+        self.input_pexels_key.setEchoMode(QLineEdit.Password)
+        self.input_pexels_key.setPlaceholderText("Optional. Used only when a clip matches the mechanism.")
+        sc_layout.addWidget(self.input_pexels_key, 12, 1, 1, 2)
+
+        sc_layout.addWidget(QLabel("Pixabay API Key (free stock):"), 13, 0)
+        self.input_pixabay_key = QLineEdit()
+        self.input_pixabay_key.setEchoMode(QLineEdit.Password)
+        self.input_pixabay_key.setPlaceholderText("Optional second stock source.")
+        sc_layout.addWidget(self.input_pixabay_key, 13, 1, 1, 2)
+
         # Default Style Reference Screenshot
         sc_layout.addWidget(QLabel("Default Style Reference Screenshot:"), 10, 0)
         def_style_layout = QHBoxLayout()
@@ -1693,11 +1863,11 @@ class CrayonStudioApp(QMainWindow):
         btn_save_settings = QPushButton("💾 Save Settings to config.json")
         btn_save_settings.setProperty("class", "primary")
         btn_save_settings.clicked.connect(self._on_save_settings)
-        sc_layout.addWidget(btn_save_settings, 11, 1)
+        sc_layout.addWidget(btn_save_settings, 14, 1)
 
         self.lbl_settings_saved = QLabel("")
         self.lbl_settings_saved.setStyleSheet("color: #107C41; font-weight: bold;")
-        sc_layout.addWidget(self.lbl_settings_saved, 11, 2)
+        sc_layout.addWidget(self.lbl_settings_saved, 14, 2)
 
         layout.addWidget(set_card)
         layout.addStretch()
@@ -1946,6 +2116,8 @@ class CrayonStudioApp(QMainWindow):
             target_duration=self.spin_duration.value(),
             tiktok_product=self.combo_product.currentText(),
             topic=title,
+            speech_speed=self.tab2_spin_speed.value(),
+            voice=self.tab2_combo_voice.currentData() or "en-US-GuyNeural",
         )
         self.text_script.setPlainText(new_script)
 
@@ -2003,6 +2175,8 @@ class CrayonStudioApp(QMainWindow):
             target_duration=self.spin_duration.value(),
             tiktok_product=self.combo_product.currentText(),
             topic=topic,
+            speech_speed=self.tab2_spin_speed.value(),
+            voice=self.tab2_combo_voice.currentData() or "en-US-GuyNeural",
         )
         self.text_script.setPlainText(new_script)
 
@@ -2062,12 +2236,25 @@ class CrayonStudioApp(QMainWindow):
         text = self.text_script.toPlainText()
         words = [w for w in text.split() if w.strip()]
         word_count = len(words)
-        # Approximate 145 wpm spoken rate
-        est_seconds = (word_count / 145.0) * 60.0
+        voice = "en-US-GuyNeural"
+        speed = 1.05
+        if hasattr(self, "tab2_combo_voice") and self.tab2_combo_voice.currentData():
+            voice = self.tab2_combo_voice.currentData()
+        if hasattr(self, "tab2_spin_speed"):
+            speed = self.tab2_spin_speed.value()
+        # Measured neural rate, including the speed multiplier. 145 WPM
+        # marked a ~46s GuyNeural read as a 60s script.
+        est_seconds = estimate_spoken_seconds(word_count, speed=speed, voice=voice)
+        needed = words_required(self.spin_duration.value(), speed=speed, voice=voice)
 
         target = self.spin_duration.value()
-        color = "#107C41" if est_seconds >= 61.0 else "#D88D00"
-        hint = "✓ Viral 61s+ target met" if est_seconds >= 61.0 else "⚠️ Under 61s target (extend script)"
+        color = "#107C41" if est_seconds >= MIN_PUBLISH_SECONDS else "#D88D00"
+        if est_seconds >= float(target):
+            hint = "✓ Spoken time meets the target"
+        elif est_seconds >= MIN_PUBLISH_SECONDS:
+            hint = f"Clears 60s — need about {needed} words to hold {target}s"
+        else:
+            hint = f"Under 60s at this voice — need about {needed} words"
 
         self.lbl_script_metrics.setText(
             f"Words: {word_count} | Est. Spoken Time: {est_seconds:.1f}s (Target: {target}s) — {hint}"
@@ -2099,6 +2286,8 @@ class CrayonStudioApp(QMainWindow):
             target_duration=self.spin_duration.value(),
             tiktok_product=self.combo_product.currentText(),
             topic=self.input_title.text().strip(),
+            speech_speed=self.tab2_spin_speed.value(),
+            voice=self.tab2_combo_voice.currentData() or "en-US-GuyNeural",
         )
         self.text_script.setPlainText(revised)
         self.terminal_log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] ✨ Applied AI revision: '{prompt}'")
@@ -2233,7 +2422,9 @@ class CrayonStudioApp(QMainWindow):
 
         # Evaluate viral retention checklist automatically
         duration = payload.get("duration", 0.0)
-        self.chk_duration.setChecked(61.0 <= duration <= 75.0)
+        if payload.get("script_text"):
+            self.text_script.setPlainText(payload.get("script_text"))
+        self.chk_duration.setChecked(float(duration) >= MIN_PUBLISH_SECONDS)
         self.chk_foley.setChecked(True)  # Foley was generated
         self.chk_frame1.setChecked(True)
         self.chk_loop_check.setChecked(True)
@@ -2275,7 +2466,10 @@ class CrayonStudioApp(QMainWindow):
         )
 
         style_ref = self.input_style_ref.text().strip() or self.config.get("style_reference_path", "")
-        enable_omni = getattr(self, "chk_omni_video", None) is not None and self.chk_omni_video.isChecked()
+        visual_source = "hybrid_stock"
+        if hasattr(self, "combo_visual_source") and self.combo_visual_source.currentData():
+            visual_source = self.combo_visual_source.currentData()
+        enable_omni = visual_source in ("generative_video", "veo_lite")
         self.render_worker = BlenderRenderWorker(
             project_slug=slug,
             category=self.combo_category.currentText(),
@@ -2285,6 +2479,7 @@ class CrayonStudioApp(QMainWindow):
             visual_engine=v_engine,
             style_reference_path=style_ref,
             enable_omni_video=enable_omni,
+            visual_source=visual_source,
         )
         self.render_worker.log_message.connect(self._on_pipeline_log)
         self.render_worker.progress_val.connect(self.progress_bar.setValue)
@@ -2819,7 +3014,13 @@ class CrayonStudioApp(QMainWindow):
         if hasattr(self, "tab2_spin_speed"):
             self.tab2_spin_speed.setValue(speed_val)
 
-        self.spin_default_duration.setValue(int(self.config.get("target_duration", 65)))
+        self.spin_default_duration.setValue(int(self.config.get("target_duration", 69)))
+        if hasattr(self, "spin_duration"):
+            self.spin_duration.setValue(int(self.config.get("target_duration", 69)))
+        if hasattr(self, "input_pexels_key"):
+            self.input_pexels_key.setText(self.config.get("pexels_api_key", ""))
+        if hasattr(self, "input_pixabay_key"):
+            self.input_pixabay_key.setText(self.config.get("pixabay_api_key", ""))
         self.chk_dry_run.setChecked(bool(self.config.get("dry_run_mode", True)))
         self.input_yt_key.setText(self.config.get("youtube_api_key", ""))
         self.input_gemini_key.setText(self.config.get("gemini_api_key", ""))
@@ -2913,6 +3114,13 @@ class CrayonStudioApp(QMainWindow):
             "youtube_api_key": self.input_yt_key.text().strip(),
             "gemini_api_key": self.input_gemini_key.text().strip(),
             "style_reference_path": self.input_default_style_ref.text().strip(),
+            "visual_source": (
+                self.combo_visual_source.currentData()
+                if hasattr(self, "combo_visual_source") and self.combo_visual_source.currentData()
+                else self.config.get("visual_source", "hybrid_stock")
+            ),
+            "pexels_api_key": self.input_pexels_key.text().strip() if hasattr(self, "input_pexels_key") else "",
+            "pixabay_api_key": self.input_pixabay_key.text().strip() if hasattr(self, "input_pixabay_key") else "",
         }
         self.config = cfg
         if save_app_config(cfg):
