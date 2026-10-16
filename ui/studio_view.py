@@ -248,7 +248,8 @@ class StudioView(QWidget):
         self.input_product.textChanged.connect(self._on_any_change)
         extras_layout.addWidget(self.input_product, stretch=1)
 
-        self.btn_pick_style_ref = QPushButton("📎 Custom Style Image...")
+        self.btn_pick_style_ref = QPushButton("Custom Style Image...")
+        self.btn_pick_style_ref.setProperty("class", "chip")
         self.btn_pick_style_ref.clicked.connect(self._pick_style_ref)
         extras_layout.addWidget(self.btn_pick_style_ref)
 
@@ -438,8 +439,8 @@ class StudioView(QWidget):
             self._on_style_card_clicked(style)
             self.step_bar.set_step(
                 0,
-                f"Great choice! Topic set to \"{title}\". Click '✨ Write My Script →' to generate your script.",
-                "✨ Write My Script →",
+                f"Topic set to \"{title}\". Click 'Write Script →' to generate your script.",
+                "Write Script →",
             )
 
     def _toggle_extras(self):

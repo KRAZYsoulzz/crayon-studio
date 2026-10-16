@@ -122,7 +122,7 @@ class ResearchView(QWidget):
         self.list_suggestions.itemDoubleClicked.connect(lambda _: self._send_selected_to_studio())
         g_layout.addWidget(self.list_suggestions, stretch=1)
 
-        self.btn_send_studio = QPushButton("🚀 Use This Idea in Studio →")
+        self.btn_send_studio = QPushButton("Use Idea in Studio →")
         self.btn_send_studio.setProperty("class", "success")
         self.btn_send_studio.clicked.connect(self._send_selected_to_studio)
         g_layout.addWidget(self.btn_send_studio)
@@ -195,7 +195,7 @@ class ResearchView(QWidget):
             hook = sug.get("hook", "")
             angle = sug.get("competitive_advantage") or sug.get("angle", "")
             style = sug.get("recommended_engine") or sug.get("recommended_style", "3D_Pixar")
-            item = QListWidgetItem(f"💡 {title}\n   Opening: {hook}\n   Why it works: {angle}  [{style}]")
+            item = QListWidgetItem(f"• {title}\n  Opening: {hook}\n  Concept: {angle}  [{style}]")
             item.setData(Qt.ItemDataRole.UserRole, sug)
             self.list_suggestions.addItem(item)
 

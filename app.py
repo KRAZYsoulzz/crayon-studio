@@ -566,7 +566,7 @@ class CrayonStudioWindow(QMainWindow):
         self.player_dock.clear_preview()
         self.sync_ui_to_project_state(persist_db=True)
         self._refresh_usage_and_costs()
-        self.studio_view.lbl_pipeline_status.setText("✓ Cleared all preview scenes. Ready to write a new script or add scenes.")
+        self.studio_view.lbl_pipeline_status.setText("Cleared all preview scenes. Ready to write a new script or add scenes.")
 
     def on_reset_preview(self):
         self.sync_ui_to_project_state(persist_db=False)
@@ -705,7 +705,7 @@ class CrayonStudioWindow(QMainWindow):
         self._refresh_usage_and_costs()
         scene_msg = f"{len(scenes)} scene cards ready" if scenes else "ready"
         self.studio_view.lbl_pipeline_status.setText(
-            f"✓ {log_note} — Script & {scene_msg}! (Click 'Next Step →' to build voiceover)"
+            f"{log_note} — Script & {scene_msg}. Click 'Next Step →' to build voiceover."
         )
 
     def _on_script_error(self, err: str):
@@ -751,7 +751,7 @@ class CrayonStudioWindow(QMainWindow):
         self.sync_ui_to_project_state(persist_db=True)
         self._refresh_usage_and_costs()
         self.studio_view.lbl_pipeline_status.setText(
-            f"✓ Choreographed {len(scenes)} visual scene cards — review below or click 'Next Step →'"
+            f"Choreographed {len(scenes)} visual scenes — review below or click 'Next Step →'"
         )
 
     def _on_scenes_edited(self, _scenes: list):
@@ -782,7 +782,7 @@ class CrayonStudioWindow(QMainWindow):
         self.studio_view.storyboard_inspector.update_single_scene(idx, updated_scene)
         self.sync_ui_to_project_state(persist_db=True)
         self._refresh_usage_and_costs()
-        self.studio_view.lbl_pipeline_status.setText(f"✓ Scene {idx + 1} updated and saved")
+        self.studio_view.lbl_pipeline_status.setText(f"Scene {idx + 1} updated and saved")
 
     def on_visual_revision_requested(self, instruction: str):
         modified_indices = self.studio_view.storyboard_inspector.apply_visual_revision(instruction)
@@ -804,7 +804,7 @@ class CrayonStudioWindow(QMainWindow):
         if os.path.exists(txt_path):
             with open(txt_path, "r", encoding="utf-8") as f:
                 QApplication.clipboard().setText(f.read())
-        self.studio_view.lbl_pipeline_status.setText("✓ Copied scene prompts to clipboard")
+        self.studio_view.lbl_pipeline_status.setText("Copied scene prompts to clipboard")
 
     def on_import_external_clips(self):
         files, _ = QFileDialog.getOpenFileNames(
@@ -838,7 +838,7 @@ class CrayonStudioWindow(QMainWindow):
     def on_run_audio(self):
         state = self.sync_ui_to_project_state(persist_db=True)
         if not state["script_text"].strip():
-            QMessageBox.warning(self, "No Script Yet", "Click 'Write My Script' in Step 1 first.")
+            QMessageBox.warning(self, "No Script Yet", "Click 'Write Script' in Step 1 first.")
             return
 
         self.studio_view.btn_run_audio.setEnabled(False)
@@ -881,7 +881,7 @@ class CrayonStudioWindow(QMainWindow):
         self.sync_ui_to_project_state(persist_db=True)
         self._refresh_usage_and_costs()
         self.studio_view.lbl_pipeline_status.setText(
-            "✓ Voiceover & scene timing ready! Click 'Step 4: Create My Video' to render your MP4."
+            "Voiceover & scene timing ready. Click 'Render Final Video' to render MP4."
         )
 
     # =========================================================================
@@ -892,7 +892,7 @@ class CrayonStudioWindow(QMainWindow):
             return  # render already in progress; ignore double-clicks
         state = self.sync_ui_to_project_state(persist_db=True)
         if not state["script_text"].strip():
-            QMessageBox.warning(self, "No Script Yet", "Click 'Write My Script' in Step 1 first.")
+            QMessageBox.warning(self, "No Script Yet", "Click 'Write Script' in Step 1 first.")
             return
 
         self.studio_view.step_bar.set_step(3)
@@ -940,7 +940,7 @@ class CrayonStudioWindow(QMainWindow):
             self.player_dock.chk_ret_visual.setChecked(bool(critic_report.get("passed", True)))
 
         self.studio_view.lbl_pipeline_status.setText(
-            f"✓ Your video is ready! Click '💾 Save Video (.MP4)' on the right phone dock."
+            "Video render complete. Click 'Export Video (.MP4)' on the right phone dock."
         )
 
     def _on_pipeline_error(self, err: str):
@@ -986,7 +986,7 @@ class CrayonStudioWindow(QMainWindow):
         )
         if dst:
             shutil.copy2(vid, dst)
-            self.studio_view.lbl_pipeline_status.setText(f"✓ Saved video to {dst}")
+            self.studio_view.lbl_pipeline_status.setText(f"Saved video to {dst}")
 
     def on_dispatch_webhook(self):
         state = self.sync_ui_to_project_state(persist_db=True)
@@ -1002,7 +1002,7 @@ class CrayonStudioWindow(QMainWindow):
         yt_res = upload_to_youtube(vid, metadata, scheduled_time=state.get("scheduled_time"), dry_run=True)
         tk_res = queue_tiktok_draft(vid, metadata, dry_run=True)
         self.studio_view.lbl_pipeline_status.setText(
-            f"✓ Queued: {yt_res.get('message')} | {tk_res.get('message')}"
+            f"Queued: {yt_res.get('message')} | {tk_res.get('message')}"
         )
 
     def on_save_settings(self, updated_cfg: dict):

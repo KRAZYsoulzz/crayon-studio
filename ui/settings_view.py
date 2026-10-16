@@ -156,5 +156,5 @@ class SettingsView(QWidget):
         except ValueError:
             updated["tts_speed"] = 1.05
         updated["ffmpeg_path"] = self.input_ffmpeg.text().strip() or "ffmpeg"
-        self.lbl_saved.setText("✓ Settings saved")
+        self.lbl_saved.setText("Settings saved")
         self.save_settings_requested.emit(updated)

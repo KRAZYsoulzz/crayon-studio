@@ -482,7 +482,7 @@ class PlayerInspectorDock(GlassCard):
                     )
         passed = report.get("passed", False)
         summary = report.get("notes") or report.get("summary", "Verified")
-        self.lbl_critic_status.setText("✓ Verified Ready" if passed else summary[:26])
+        self.lbl_critic_status.setText("Verified Ready" if passed else summary[:26])
         self.lbl_critic_status.setToolTip(summary)
         self.lbl_critic_status.setStyleSheet(
             f"color: {'#30D158' if passed else '#FF453A'}; font-weight: 600; font-size: 11px; background: transparent;"
@@ -492,10 +492,10 @@ class PlayerInspectorDock(GlassCard):
         if self.preview_stack.currentIndex() == 1 and self.current_video_path:
             if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 self.media_player.pause()
-                self.btn_play.setText("▶ Play")
+                self.btn_play.setText("Play")
             else:
                 self.media_player.play()
-                self.btn_play.setText("⏸ Pause")
+                self.btn_play.setText("Pause")
         else:
             next_val = (self.slider_seek.value() + 1500) % max(self.slider_seek.maximum(), 1000)
             self.slider_seek.setValue(next_val)
