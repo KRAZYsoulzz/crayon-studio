@@ -24,6 +24,9 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
+from core.duration_guard import cover_audio_duration, probe_media_duration
+from core.stock_footage import acquire_stock_clip
+
 
 class AIStoryboardEngine:
     """
@@ -55,8 +58,17 @@ class AIStoryboardEngine:
                     if not self.gemini_api_key:
                         self.gemini_api_key = cfg.get("gemini_api_key", "")
                     self.ffmpeg_path = cfg.get("ffmpeg_path", "ffmpeg")
+                    self.pexels_api_key = cfg.get("pexels_api_key", "") or os.environ.get("PEXELS_API_KEY", "")
+                    self.pixabay_api_key = cfg.get("pixabay_api_key", "") or os.environ.get("PIXABAY_API_KEY", "")
+                    self.visual_source = cfg.get("visual_source", "hybrid_stock")
             except Exception:
-                pass
+                self.pexels_api_key = os.environ.get("PEXELS_API_KEY", "")
+                self.pixabay_api_key = os.environ.get("PIXABAY_API_KEY", "")
+                self.visual_source = "hybrid_stock"
+        else:
+            self.pexels_api_key = os.environ.get("PEXELS_API_KEY", "")
+            self.pixabay_api_key = os.environ.get("PIXABAY_API_KEY", "")
+            self.visual_source = "hybrid_stock"
 
     def extract_style_dna(
         self,
@@ -380,6 +392,7 @@ class AIStoryboardEngine:
         duration_sec: float = 8.0,
         previous_interaction_id: Optional[str] = None,
         gemini_api_key: Optional[str] = None,
+        tier: str = "omni_or_fast",
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
@@ -396,61 +409,63 @@ class AIStoryboardEngine:
         if not api_key:
             return False, previous_interaction_id
 
-        # 1. Primary: Gemini Omni Flash Interactions API (Fast, multi-turn continuous world model)
-        try:
-            from google import genai
+        # 1. Primary: Gemini Omni Flash. Lite skips it and calls Veo 3.1 Lite.
+        if tier != "lite":
+            try:
+                from google import genai
 
-            client = genai.Client(api_key=api_key)
-            dur_int = max(3, min(10, int(round(duration_sec))))
-            dur_str = f"{dur_int}s"
+                client = genai.Client(api_key=api_key)
+                dur_int = max(3, min(10, int(round(duration_sec))))
+                dur_str = f"{dur_int}s"
 
-            turn_label = f" (Turn extension from {previous_interaction_id[:16]}...)" if previous_interaction_id else ""
-            if progress_callback:
-                progress_callback(f"[Omni Flash] Generating AI video clip ({dur_str}){turn_label}...")
+                turn_label = f" (Turn extension from {previous_interaction_id[:16]}...)" if previous_interaction_id else ""
+                if progress_callback:
+                    progress_callback(f"[Omni Flash] Generating AI video clip ({dur_str}){turn_label}...")
 
-            omni_models = ["gemini-omni-flash-preview", "gemini-omni-1.1-flash"]
-            for m in omni_models:
-                try:
-                    create_kwargs = {
-                        "model": m,
-                        "input": [{"type": "text", "text": scene_prompt}],
-                        "response_format": {
-                            "type": "video",
-                            "aspect_ratio": "9:16",
-                            "duration": dur_str,
-                        },
-                    }
-                    if previous_interaction_id:
-                        create_kwargs["previous_interaction_id"] = previous_interaction_id
+                omni_models = ["gemini-omni-flash-preview", "gemini-omni-1.1-flash"]
+                for m in omni_models:
+                    try:
+                        create_kwargs = {
+                            "model": m,
+                            "input": [{"type": "text", "text": scene_prompt}],
+                            "response_format": {
+                                "type": "video",
+                                "aspect_ratio": "9:16",
+                                "duration": dur_str,
+                            },
+                        }
+                        if previous_interaction_id:
+                            create_kwargs["previous_interaction_id"] = previous_interaction_id
 
-                    inter = client.interactions.create(**create_kwargs)
-                    video_bytes = None
-                    if hasattr(inter, "output_video") and inter.output_video:
-                        if getattr(inter.output_video, "data", None):
-                            d = inter.output_video.data
-                            video_bytes = base64.b64decode(d) if isinstance(d, str) else d
-                        elif getattr(inter.output_video, "uri", None):
-                            video_bytes = client.files.download(file=inter.output_video.uri)
+                        inter = client.interactions.create(**create_kwargs)
+                        video_bytes = None
+                        if hasattr(inter, "output_video") and inter.output_video:
+                            if getattr(inter.output_video, "data", None):
+                                d = inter.output_video.data
+                                video_bytes = base64.b64decode(d) if isinstance(d, str) else d
+                            elif getattr(inter.output_video, "uri", None):
+                                video_bytes = client.files.download(file=inter.output_video.uri)
 
-                    if video_bytes and len(video_bytes) > 10000:
-                        os.makedirs(os.path.dirname(os.path.abspath(output_clip_path)), exist_ok=True)
-                        with open(output_clip_path, "wb") as f:
-                            f.write(video_bytes)
+                        if video_bytes and len(video_bytes) > 10000:
+                            os.makedirs(os.path.dirname(os.path.abspath(output_clip_path)), exist_ok=True)
+                            with open(output_clip_path, "wb") as f:
+                                f.write(video_bytes)
+                            if progress_callback:
+                                progress_callback(f"[OK] [Omni Flash] Generated {len(video_bytes) // 1024} KB clip: {os.path.basename(output_clip_path)}")
+                            return True, inter.id
+                    except Exception as ex:
                         if progress_callback:
-                            progress_callback(f"[OK] [Omni Flash] Generated {len(video_bytes) // 1024} KB clip: {os.path.basename(output_clip_path)}")
-                        return True, inter.id
-                except Exception as ex:
-                    if progress_callback:
-                        progress_callback(f"[Omni Flash] Model {m} note: {ex}")
+                            progress_callback(f"[Omni Flash] Model {m} note: {ex}")
+            except Exception as e:
+                if progress_callback:
+                    progress_callback(f"[Note] Omni Flash note: {e}")
 
-        except Exception as e:
-            if progress_callback:
-                progress_callback(f"[Note] Omni Flash note: {e}")
-
-        # 2. Secondary Fallback: Veo 3.1
+        # 2. Veo 3.1 Fast, or Veo 3.1 Lite when the cheaper generative mode is selected.
+        veo_model = "veo-3.1-lite-generate-preview" if tier == "lite" else "veo-3.1-fast-generate-preview"
+        veo_label = "Veo 3.1 Lite" if tier == "lite" else "Veo 3.1 Fast"
         try:
             if progress_callback:
-                progress_callback("[Veo 3.1 Fallback] Generating AI video clip...")
+                progress_callback(f"[{veo_label}] Generating AI video clip...")
             from google import genai
             from google.genai import types
 
@@ -471,7 +486,7 @@ class AIStoryboardEngine:
                 image=image_source,
             )
             op = client.models.generate_videos(
-                model="veo-3.1-fast-generate-preview",
+                model=veo_model,
                 source=source,
                 config=config,
             )
@@ -496,7 +511,7 @@ class AIStoryboardEngine:
 
                 if os.path.exists(output_clip_path) and os.path.getsize(output_clip_path) > 10000:
                     if progress_callback:
-                        progress_callback(f"[OK] Veo 3.1 AI video clip generated: {os.path.basename(output_clip_path)}")
+                        progress_callback(f"[OK] {veo_label} AI video clip generated: {os.path.basename(output_clip_path)}")
                     return True, None
         except Exception as e:
             if progress_callback:
@@ -716,6 +731,28 @@ class AIStoryboardEngine:
 
         return out
 
+    @staticmethod
+    def fit_cover(frame: np.ndarray, width: int, height: int) -> np.ndarray:
+        """Center-crop to 9:16 and scale. A plain resize would squash landscape stock."""
+        frame_h, frame_w = frame.shape[:2]
+        if frame_w <= 0 or frame_h <= 0:
+            return cv2.resize(frame, (width, height))
+        target_ratio = width / float(height)
+        source_ratio = frame_w / float(frame_h)
+        if abs(source_ratio - target_ratio) < 0.02:
+            if (frame_w, frame_h) != (width, height):
+                return cv2.resize(frame, (width, height), interpolation=cv2.INTER_LANCZOS4)
+            return frame
+        if source_ratio > target_ratio:
+            crop_w = max(1, int(round(frame_h * target_ratio)))
+            x0 = max(0, (frame_w - crop_w) // 2)
+            cropped = frame[:, x0:x0 + crop_w]
+        else:
+            crop_h = max(1, int(round(frame_w / target_ratio)))
+            y0 = max(0, (frame_h - crop_h) // 2)
+            cropped = frame[y0:y0 + crop_h, :]
+        return cv2.resize(cropped, (width, height), interpolation=cv2.INTER_LANCZOS4)
+
     def animate_storyboard(
         self,
         scenes_data: List[Dict[str, Any]],
@@ -785,7 +822,7 @@ class AIStoryboardEngine:
                     if not ret:
                         break
                     if fr.shape[0] != h or fr.shape[1] != w:
-                        fr = cv2.resize(fr, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                        fr = self.fit_cover(fr, w, h)
                     clip_frames.append(fr)
                 cap.release()
 
@@ -802,13 +839,13 @@ class AIStoryboardEngine:
                         ncap.release()
                         if nret:
                             if nfr.shape[0] != h or nfr.shape[1] != w:
-                                nfr = cv2.resize(nfr, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                                nfr = self.fit_cover(nfr, w, h)
                             next_start_frame = nfr
                     elif nxt.get("img_path") and os.path.exists(nxt["img_path"]):
                         nfr = cv2.imread(nxt["img_path"])
                         if nfr is not None:
                             if nfr.shape[0] != h or nfr.shape[1] != w:
-                                nfr = cv2.resize(nfr, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                                nfr = self.fit_cover(nfr, w, h)
                             next_start_frame = nfr
 
                 for f in range(num_frames):
@@ -832,7 +869,7 @@ class AIStoryboardEngine:
                 img = np.full((h, w, 3), (48, 24, 14), dtype=np.uint8)
 
             if img.shape[0] != h or img.shape[1] != w:
-                img = cv2.resize(img, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                img = self.fit_cover(img, w, h)
 
             # Pre-read next image for seamless cross-dissolve transition
             next_img = None
@@ -841,12 +878,20 @@ class AIStoryboardEngine:
                 if next_path and os.path.exists(next_path):
                     next_img = cv2.imread(next_path)
                     if next_img is not None and (next_img.shape[0] != h or next_img.shape[1] != w):
-                        next_img = cv2.resize(next_img, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                        next_img = self.fit_cover(next_img, w, h)
 
+            scene_i = int(sc.get("scene_idx", idx))
             for f in range(num_frames):
-                # 2.5D camera push-in (1.00 -> 1.05 zoom)
-                zoom = 1.0 + 0.05 * (f / float(num_frames))
-                M = cv2.getRotationMatrix2D((540, 680), 0.0, zoom)
+                # Ken Burns / pan-zoom. Even scenes push in and drift up;
+                # odd scenes pull back and drift sideways. Local, no API cost.
+                progress = f / float(max(1, num_frames))
+                if scene_i % 2 == 0:
+                    zoom = 1.0 + 0.12 * progress
+                    center = (540, int(680 - 36 * progress))
+                else:
+                    zoom = 1.12 - 0.10 * progress
+                    center = (int(500 + 70 * progress), 700)
+                M = cv2.getRotationMatrix2D(center, 0.0, zoom)
                 frame_canvas = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
 
                 # Render active physical motion layer (water, crystals, ash)
@@ -883,6 +928,7 @@ class AIStoryboardEngine:
         visual_engine: str = "2D_Crayon",
         style_reference_path: Optional[str] = None,
         enable_omni_video: bool = False,
+        visual_source: Optional[str] = None,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> str:
         """
@@ -918,12 +964,35 @@ class AIStoryboardEngine:
         if progress_callback:
             progress_callback("[Director] Choreographing 3D Pixar storyboard timeline...")
 
-        # 2. Segment script into 5 to 7 timed scenes
+        # 2. Segment script into timed scenes, then hold the picture through the wav.
+        # Word slices used to drop the pauses between scenes, so the picture
+        # ended before the voiceover and the mux kept the shorter picture.
         scenes = self.segment_script_into_scenes(
             script_text=script_text,
             words_json_path=words_json_path,
             target_count=6,
         )
+        voiceover_path = os.path.join(project_dir, "voiceover.wav")
+        if os.path.exists(voiceover_path):
+            try:
+                audio_duration = probe_media_duration(voiceover_path, ffmpeg_path=self.ffmpeg_path)
+                scenes = cover_audio_duration(scenes, audio_duration)
+                if progress_callback:
+                    progress_callback(
+                        f"[Director] Picture timeline set to voiceover length ({audio_duration:.1f}s)."
+                    )
+            except Exception as exc:
+                if progress_callback:
+                    progress_callback(f"[Director] Could not read voiceover length ({exc}). Using word timestamps.")
+
+        source = visual_source or getattr(self, "visual_source", "hybrid_stock") or "hybrid_stock"
+        if enable_omni_video and source in ("image_motion", "hybrid_stock"):
+            source = "generative_video"
+        video_tier = None
+        if source == "generative_video":
+            video_tier = "omni_or_fast"
+        elif source == "veo_lite":
+            video_tier = "lite"
 
         # 3. Extract or resolve Style DNA
         style_dna = self.extract_style_dna(
@@ -1022,7 +1091,21 @@ class AIStoryboardEngine:
                 if progress_callback:
                     progress_callback(f"[OK] Found custom AI video clip: {os.path.basename(custom_clip)}")
                 sc["video_clip_path"] = custom_clip
-            else:
+            elif source == "hybrid_stock":
+                stock_clip = acquire_stock_clip(
+                    scene_text=sc.get("script_excerpt") or sc.get("prompt") or "",
+                    storyboard_dir=storyboard_dir,
+                    scene_index=idx,
+                    pexels_api_key=getattr(self, "pexels_api_key", ""),
+                    pixabay_api_key=getattr(self, "pixabay_api_key", ""),
+                    progress_callback=progress_callback,
+                )
+                if stock_clip:
+                    sc["video_clip_path"] = stock_clip
+                    sc["image_path"] = ""
+                    continue
+                # No mechanism match: fall through to a generated still + Ken Burns.
+            if not custom_clip and not sc.get("video_clip_path"):
                 # Generate distinct 3D Pixar keyframe for this scene beat
                 self.generate_scene_image(
                     prompt=sc["prompt"],
@@ -1039,9 +1122,8 @@ class AIStoryboardEngine:
                 except Exception:
                     pass
 
-                # Generate dedicated standalone Gemini Omni Flash video ONLY if explicitly enabled
                 omni_clip_target = os.path.join(storyboard_dir, f"scene_{idx_1based:02d}.mp4")
-                if enable_omni_video and self.gemini_api_key:
+                if video_tier and self.gemini_api_key:
                     video_prompt = sc.get("omni_prompt", sc["prompt"])
                     ok, _ = self.generate_ai_video_clip(
                         scene_prompt=video_prompt,
@@ -1049,12 +1131,16 @@ class AIStoryboardEngine:
                         output_clip_path=omni_clip_target,
                         duration_sec=sc["duration"],
                         previous_interaction_id=None,
+                        tier=video_tier,
                         progress_callback=progress_callback,
                     )
                     if ok:
                         sc["video_clip_path"] = omni_clip_target
-                elif not enable_omni_video and progress_callback:
-                    progress_callback(f"[2.5D Motion] Scene {idx_1based}: Using high-speed 2.5D cinematic keyframe animation.")
+                elif progress_callback:
+                    progress_callback(
+                        f"[Illustrated motion] Scene {idx_1based}: still plus Ken Burns "
+                        f"({source.replace('_', ' ')})."
+                    )
 
         # Save metadata
         with open(os.path.join(project_dir, "storyboard.json"), "w", encoding="utf-8") as f:

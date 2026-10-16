@@ -2,7 +2,8 @@
 
 Provides intelligent, topic-aware script authoring and alterations:
 - High-friction viral hook injection
-- 155-170 word target length (62-68 seconds at 1.05x speed)
+- Word count budgeted from the measured neural TTS rate so a 69s target
+  still clears 60 seconds after silence trimming
 - Seamless audio loop closures (ending sentence flows naturally back into opening hook)
 - Factual, engaging scientific & engineering narrative structure
 - TikTok Shop organic product bridge integration
@@ -13,6 +14,8 @@ from __future__ import annotations
 import logging
 import re
 from typing import Optional
+
+from core.duration_guard import DEFAULT_TARGET_SECONDS, ensure_script_word_count
 
 logger = logging.getLogger("crayon_studio.ai_modifier")
 
@@ -76,6 +79,39 @@ MASTER_SCRIPTS = {
         "But once you extract all the air molecules and drop them in a complete vacuum, atmospheric drag drops to zero. "
         "Without air molecules pushing back, planetary gravity accelerates every single object at the identical rate: nine point eight meters per second squared, regardless of its mass, size, or material composition. "
         "The universe proves that gravity doesn't accelerate weight; it curves spacetime itself, pulling massive steel and fragile feathers with the exact same celestial urgency, which is why if you drop a heavy bowling ball and a lightweight feather inside a giant vacuum chamber, they hit the floor at the exact same millisecond."
+    ),
+    "quartz_watch": (
+        "A quartz watch does not tell time with a spinning wheel. It counts the vibrations of a tiny tuning fork, "
+        "and that fork moves thirty two thousand seven hundred sixty eight times every single second. "
+        "Open the case and the part that matters is a crystal of quartz, laser-cut into a tuning fork smaller than a grain of rice, "
+        "with two metal electrodes plated onto its surface. "
+        "A battery feeds a simple circuit that nudges the fork with a tiny electric field. "
+        "Quartz is piezoelectric, so the field bends the fork, and the bending creates a field of its own, which kicks the circuit again. "
+        "The fork and the circuit lock together and hold that rate, because the shape of the crystal wants to flex at one pitch and no other. "
+        "The circuit then divides that pitch in half, fifteen times in a row, until one pulse is left each second. "
+        "That one pulse fires a stepper motor, and the motor advances the seconds hand by a single tooth. "
+        "A mechanical watch depends on a balance wheel and a hairspring, and gravity tugs that wheel whenever you tilt your wrist. "
+        "The quartz fork is too stiff and too small for that tug to matter, which is why a cheap quartz watch stays closer to the right time than a handmade mechanical one. "
+        "So the tick you hear is not a decoration. It is the last step of a counter that began with a quartz watch counting thirty two thousand seven hundred sixty eight vibrations every single second."
+    ),
+    "fireworks_shell": (
+        "A firework shell is a timed machine, and the colors you see are packed into it before it ever leaves the tube. "
+        "The lift charge is black powder in a pouch under the shell. When that powder burns it makes a rush of gas, and the gas shoves the shell up the mortar. "
+        "A slow fuse, the time fuse, is lit by the same fire and burns while the shell is in the air. Its length is the delay. "
+        "At the top of the arc the fuse reaches the burst charge in the middle of the shell. "
+        "That second burn does not make the colors. It only breaks the paper casing and throws the stars outward. "
+        "Each star is a pea of fuel, oxidizer, and a metal salt. Strontium burns red, barium burns green, copper burns blue, and sodium burns yellow. "
+        "The star has to be pressed dense enough to stay lit as it flies, and loose enough that the whole pea is gone before it hits the ground. "
+        "So the bloom in the sky is the shell finishing a sequence that started when the lift charge fired, which is why a firework shell is a timed machine and the colors were packed into it before it ever left the tube."
+    ),
+    "noise_cancelling_headphones": (
+        "Noise-cancelling headphones do not block the world with thicker foam. They play the noise backwards. "
+        "A microphone on the outside of the ear cup listens to the sound that is about to reach your ear. "
+        "Inside the cup, a second microphone listens to whatever got through, including the music and what is left of the noise. "
+        "A small processor compares those two signals and builds a new wave whose peaks line up with the noise's valleys. "
+        "The driver plays that opposing wave into the ear, and the two pressure waves add together. Where they match in size and miss in direction, the air barely moves, and the low rumble of an engine drops out. "
+        "Foam still does the high hiss, because those short waves change too fast for the processor to catch. "
+        "The trick only works if the opposing wave arrives at the same instant as the noise, which is why noise-cancelling headphones do not block the world with thicker foam. They play the noise backwards."
     ),
 }
 
@@ -146,7 +182,41 @@ def modify_script(
     script_text: str,
     prompt: str = "",
     category: str = "STEM",
-    target_duration: int = 65,
+    target_duration: int = DEFAULT_TARGET_SECONDS,
+    tiktok_product: Optional[str] = None,
+    topic: str = "",
+    speech_speed: float = 1.05,
+    voice: str = "en-US-GuyNeural",
+) -> str:
+    """Revise a script, then lengthen it until the measured voice can hold the target.
+
+    A shorten request is returned as written. Every other path is checked
+    against the neural speaking rate so the draft is not secretly 45 seconds.
+    """
+    revised = _revise_script(
+        script_text=script_text,
+        prompt=prompt,
+        category=category,
+        target_duration=int(target_duration),
+        tiktok_product=tiktok_product,
+        topic=topic,
+    )
+    if any(word in (prompt or "").lower() for word in ("shorten", "compress", "faster")):
+        return revised
+    return ensure_script_word_count(
+        revised,
+        topic=topic or category,
+        target_seconds=float(target_duration),
+        speed=speech_speed,
+        voice=voice,
+    )
+
+
+def _revise_script(
+    script_text: str,
+    prompt: str = "",
+    category: str = "STEM",
+    target_duration: int = DEFAULT_TARGET_SECONDS,
     tiktok_product: Optional[str] = None,
     topic: str = "",
 ) -> str:
@@ -171,9 +241,15 @@ def modify_script(
     if not text:
         comb_topic = (topic + " " + category).lower()
 
-        if any(w in comb_topic for w in ["concrete", "roman", "cement", "seawall", "pantheon", "architecture"]):
+        if any(w in comb_topic for w in ["watch", "timepiece", "wristwatch", "horology", "clock"]):
+            return MASTER_SCRIPTS["quartz_watch"]
+        elif any(w in comb_topic for w in ["firework", "pyrotechnic", "mortar shell", "aerial shell"]):
+            return MASTER_SCRIPTS["fireworks_shell"]
+        elif any(w in comb_topic for w in ["headphone", "headset", "noise-cancel", "noise cancel", "anc "]):
+            return MASTER_SCRIPTS["noise_cancelling_headphones"]
+        elif any(w in comb_topic for w in ["concrete", "roman", "cement", "seawall", "pantheon", "architecture"]):
             return MASTER_SCRIPTS["architecture_roman_concrete"]
-        elif any(w in comb_topic for w in ["piezo", "lighter", "spark", "volt", "quartz", "engineering"]):
+        elif any(w in comb_topic for w in ["piezo", "lighter", "butane", "spark gap"]):
             return MASTER_SCRIPTS["engineering_piezo_lighter"]
         elif any(w in comb_topic for w in ["motor", "brushless", "rotor", "stator", "rpm", "how it's made"]):
             return MASTER_SCRIPTS["how_its_made_brushless_motor"]
