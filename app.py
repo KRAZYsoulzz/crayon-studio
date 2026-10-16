@@ -82,7 +82,7 @@ class CrayonStudioWindow(QMainWindow):
             "hook": "",
             "category": "STEM",
             "visual_engine": "3D_Pixar",
-            "render_mode": self.config.get("default_render_mode", "full_omni"),
+            "render_mode": self.config.get("default_render_mode", "smart_hybrid"),
             "style_reference_path": "",
             "script_text": "",
             "tiktok_product": "",

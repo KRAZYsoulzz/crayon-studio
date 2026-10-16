@@ -183,12 +183,12 @@ class StudioView(QWidget):
         mode_cards_h = QHBoxLayout()
         mode_cards_h.setSpacing(8)
         mode_defs = [
-            ("full_omni", "🎥 Full AI Video", "Every scene rendered with Omni 1.1", "Max Motion"),
+            ("full_omni", "🎥 Full AI Video", "Every scene rendered as AI video (Wan)", "Max Motion"),
             ("smart_hybrid", "⚡ Smart Hybrid", "AI video hook + 2.5D motion scenes", "Balanced"),
             ("keyframe_only", "🖼️ Motion Keyframes", "Fastest & lowest credit use", "Low Cost"),
         ]
         for key, title, desc, badge in mode_defs:
-            mc = SelectableStyleCard(key, title, desc, badge, selected=(key == "full_omni"))
+            mc = SelectableStyleCard(key, title, desc, badge, selected=(key == "smart_hybrid"))
             mc.clicked.connect(self._on_mode_card_clicked)
             mode_cards_h.addWidget(mc)
             self.mode_cards[key] = mc
@@ -251,6 +251,7 @@ class StudioView(QWidget):
         self.combo_render_mode.addItem("Full Omni", "full_omni")
         self.combo_render_mode.addItem("Smart Hybrid", "smart_hybrid")
         self.combo_render_mode.addItem("Keyframe Only", "keyframe_only")
+        self.combo_render_mode.setCurrentIndex(self.combo_render_mode.findData("smart_hybrid"))
         self.combo_render_mode.currentIndexChanged.connect(self._sync_cards_from_combos)
         self.combo_render_mode.setVisible(False)
         extras_layout.addWidget(self.combo_render_mode)
