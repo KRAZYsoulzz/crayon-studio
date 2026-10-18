@@ -66,6 +66,7 @@ class VisualEngineRouter:
         script_text: Optional[str] = None,
         style_reference_path: Optional[str] = None,
         enable_omni_video: bool = False,
+        visual_source: Optional[str] = None,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> Dict:
         """
@@ -102,6 +103,7 @@ class VisualEngineRouter:
                 visual_engine=self.visual_engine,
                 style_reference_path=style_reference_path,
                 enable_omni_video=enable_omni_video,
+                visual_source=visual_source,
                 progress_callback=_cb,
             )
 

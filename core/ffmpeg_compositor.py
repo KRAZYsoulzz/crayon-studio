@@ -273,17 +273,40 @@ class FFmpegCompositor:
 
         has_foley = bool(foley_path and os.path.exists(foley_path) and os.path.getsize(foley_path) > 128)
 
+        # Hold the last frame if the picture is shorter than the voiceover.
+        # `-shortest` used to cut the export to whichever stream ended first,
+        # so a timeline that dropped inter-scene pauses came out under 60s
+        # even when the narration was long enough.
+        from core.duration_guard import (
+            assert_publishable_duration,
+            probe_media_duration,
+            video_pad_filter,
+        )
+
+        pad_prefix = ""
+        try:
+            video_seconds = probe_media_duration(video_path, ffmpeg_path=self.ffmpeg_path)
+            audio_seconds = probe_media_duration(voiceover_path, ffmpeg_path=self.ffmpeg_path)
+            pad_prefix = video_pad_filter(video_seconds, audio_seconds)
+            if pad_prefix and progress_callback:
+                progress_callback(
+                    f"[FFmpeg] Holding the last frame so the picture covers the {audio_seconds:.1f}s voiceover."
+                )
+        except Exception as exc:
+            if progress_callback:
+                progress_callback(f"[FFmpeg] Duration probe note ({exc}). Muxing without a hold.")
+
         # Construct filter_complex with 44.1kHz sample-rate locking and async timestamp drift correction
         if has_foley:
             filter_complex = (
-                f"[0:v]fps={self.fps},ass={local_ass_filename}[vout];"
+                f"[0:v]{pad_prefix}fps={self.fps},ass={local_ass_filename}[vout];"
                 f"[1:a]aresample=44100:async=1:first_pts=0,pan=stereo|c0=c0|c1=c0,volume=1.0[vo];"
                 f"[2:a]aresample=44100:async=1:first_pts=0,volume={foley_volume:.2f}[sfx];"
                 f"[vo][sfx]amix=inputs=2:duration=first:dropout_transition=2[aout]"
             )
         else:
             filter_complex = (
-                f"[0:v]fps={self.fps},ass={local_ass_filename}[vout];"
+                f"[0:v]{pad_prefix}fps={self.fps},ass={local_ass_filename}[vout];"
                 f"[1:a]aresample=44100:async=1:first_pts=0,pan=stereo|c0=c0|c1=c0,volume=1.0[aout]"
             )
 
@@ -310,7 +333,6 @@ class FFmpegCompositor:
             "-b:a", "192k",
             "-ar", "44100",
             "-movflags", "+faststart",
-            "-shortest",
             os.path.abspath(output_mp4_path),
         ])
 
@@ -345,6 +367,21 @@ class FFmpegCompositor:
 
         if progress_callback:
             progress_callback(f"[FFmpeg] Final video exported: {output_mp4_path}")
+
+        try:
+            final_seconds = probe_media_duration(output_mp4_path, ffmpeg_path=self.ffmpeg_path)
+            assert_publishable_duration(final_seconds)
+            if progress_callback:
+                progress_callback(f"[FFmpeg] Duration check passed: {final_seconds:.1f}s.")
+        except Exception as exc:
+            # A probe failure should not hide a short file, but a missing
+            # ffprobe should not discard a render we cannot measure.
+            from core.duration_guard import DurationShortfall
+
+            if isinstance(exc, DurationShortfall):
+                raise
+            if progress_callback:
+                progress_callback(f"[FFmpeg] Could not confirm final duration ({exc}).")
 
         return output_mp4_path
 
